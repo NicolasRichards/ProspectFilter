@@ -41,25 +41,17 @@ final class MainViewModel: ObservableObject {
                                 filters: filters, sportId: sid)
             }
 
-            // 4. Age filter (skip API call if no age filter)
+            // 4. Age filter — one API call; map reused for display
+            var ageMap: [Int: Int] = [:]
             let candidates: [RosterPlayer]
             if let mx {
-                let ages = try await MLBClient.seasonAges(personIds: posFiltered.map(\.personId), season: ssn)
+                ageMap = (try? await MLBClient.seasonAges(personIds: posFiltered.map(\.personId), season: ssn)) ?? [:]
                 candidates = posFiltered.filter { p in
-                    guard let a = ages[p.personId] else { return false }
+                    guard let a = ageMap[p.personId] else { return false }
                     return a <= mx
                 }
             } else {
                 candidates = posFiltered
-            }
-
-            // Re-fetch ages for display (same call result when age filter applied, or fetch now)
-            let ageMap: [Int: Int]
-            if let _ = mx {
-                // We already filtered; fetch again for display
-                ageMap = (try? await MLBClient.seasonAges(personIds: candidates.map(\.personId), season: ssn)) ?? [:]
-            } else {
-                ageMap = [:]
             }
 
             // 5. Evaluate each candidate against stat line + filters
@@ -147,12 +139,11 @@ final class MainViewModel: ObservableObject {
                     matchedLevel = levelAbbrev(sportId: sid)
                     referenceSportId = sid
                 } else {
-                    let (agg, stints) = try await MLBClient.batterLines(personId: player.personId, season: season)
+                    let (_, stints) = try await MLBClient.batterLines(personId: player.personId, season: season)
                     let milbStints = stints.filter { milbSportIds.contains($0.sportId) }
                     guard !milbStints.isEmpty else { return nil }
-                    // Aggregate MiLB only
                     let milbCounts = milbStints.compactMap { $0.batter }.reduce(BatterCounts(), +)
-                    counts = agg.pa > 0 ? milbCounts : nil
+                    counts = milbCounts.pa > 0 ? milbCounts : nil
                     matchedLevel = "Combined"
                     // Reference = highest MiLB level with stats
                     referenceSportId = milbStints
