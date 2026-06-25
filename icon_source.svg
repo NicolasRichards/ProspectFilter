@@ -1,0 +1,63 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="1024" height="1024">
+<title>ProspectFilter app icon</title>
+
+<rect width="1024" height="1024" fill="#26713B"/>
+
+<!-- CROWD: 4 overlapping player silhouettes, left third -->
+<g fill="#0B3016">
+
+  <g opacity="0.60">
+    <circle cx="94" cy="398" r="36"/>
+    <rect x="66" y="435" width="54" height="112" rx="6"/>
+    <rect x="69" y="543" width="21" height="78"/>
+    <rect x="99" y="543" width="21" height="78"/>
+  </g>
+
+  <g opacity="0.68">
+    <circle cx="148" cy="380" r="41"/>
+    <rect x="116" y="422" width="64" height="124" rx="6"/>
+    <rect x="119" y="542" width="24" height="86"/>
+    <rect x="152" y="542" width="24" height="86"/>
+  </g>
+
+  <g opacity="0.74">
+    <circle cx="207" cy="362" r="44"/>
+    <rect x="172" y="407" width="70" height="132" rx="6"/>
+    <rect x="175" y="535" width="27" height="94"/>
+    <rect x="211" y="535" width="27" height="94"/>
+  </g>
+
+  <g opacity="0.80">
+    <circle cx="269" cy="373" r="42"/>
+    <rect x="235" y="416" width="66" height="127" rx="6"/>
+    <rect x="238" y="539" width="25" height="90"/>
+    <rect x="272" y="539" width="25" height="90"/>
+  </g>
+
+</g>
+
+<!-- FUNNEL: sideways, opening left, spout pointing right -->
+<!-- Funnel body (wide trapezoid) -->
+<path fill="rgba(255,255,255,0.88)" d="M 328,230 L 328,794 L 605,590 L 605,434 Z"/>
+<!-- Funnel spout -->
+<path fill="rgba(255,255,255,0.88)" d="M 605,434 L 695,468 L 695,558 L 605,590 Z"/>
+
+<!-- SINGLE BATTER: right side, larger, more solid -->
+<g fill="#0B3016" opacity="0.88">
+  <!-- Head -->
+  <circle cx="840" cy="328" r="64"/>
+  <!-- Cap bill extending right/forward -->
+  <rect x="860" y="270" width="72" height="20" rx="6"/>
+  <!-- Torso -->
+  <rect x="786" y="394" width="108" height="170" rx="10"/>
+  <!-- Arms (suggestion via extended shoulder ellipse) -->
+  <ellipse cx="848" cy="422" rx="66" ry="26" transform="rotate(-20 848 422)"/>
+  <!-- Left leg -->
+  <rect x="789" y="560" width="46" height="138"/>
+  <!-- Right leg -->
+  <rect x="847" y="560" width="46" height="138"/>
+</g>
+<!-- Bat: diagonal line from hands up-right -->
+<line x1="892" y1="432" x2="980" y2="244" stroke="#0B3016" stroke-width="22" stroke-linecap="round" stroke-opacity="0.88"/>
+
+</svg>
