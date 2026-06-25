@@ -58,7 +58,7 @@ final class MainViewModel: ObservableObject {
             var matched: [MatchResult] = []
             try await withThrowingTaskGroup(of: MatchResult?.self) { group in
                 for player in candidates {
-                    group.addTask { [self] in
+                    group.addTask {
                         await Self.evaluatePlayer(player, mode: mode, sid: sid,
                                                   filters: filters, pitcherRole: pRole,
                                                   age: ageMap[player.personId], season: ssn)
@@ -147,7 +147,7 @@ final class MainViewModel: ObservableObject {
                     matchedLevel = "Combined"
                     // Reference = highest MiLB level with stats
                     referenceSportId = milbStints
-                        .compactMap { $0.batter.map { _ in $0.sportId } }
+                        .compactMap { stint in stint.batter.map { _ in stint.sportId } }
                         .min(by: { levelOrder(sportId: $0) < levelOrder(sportId: $1) })
                 }
 
@@ -178,7 +178,7 @@ final class MainViewModel: ObservableObject {
                     counts = milbCounts.bf > 0 ? milbCounts : nil
                     matchedLevel = "Combined"
                     referenceSportId = milbStints
-                        .compactMap { $0.pitcher.map { _ in $0.sportId } }
+                        .compactMap { stint in stint.pitcher.map { _ in stint.sportId } }
                         .min(by: { levelOrder(sportId: $0) < levelOrder(sportId: $1) })
                 }
 
