@@ -168,6 +168,12 @@ struct PitcherFilter: Identifiable, Codable, Equatable {
 
 // MARK: - Match results
 
+struct FilterValue {
+    let label: String
+    let formatted: String
+    let sortValue: Double
+}
+
 enum PitcherRole: String, CaseIterable, Identifiable {
     case all = "All", sp = "SP", rp = "RP"
     var id: String { rawValue }
@@ -191,6 +197,7 @@ struct MatchResult: Identifiable {
     let age: Int?
     let onIL: Bool
     let levelChangeNote: String? // "now at AAA" / "now demoted to A" etc.
+    let filterValues: [FilterValue]  // metric values for the active filters, in filter order
 }
 
 // MARK: - Level helpers

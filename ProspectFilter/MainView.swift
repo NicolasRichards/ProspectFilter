@@ -69,7 +69,12 @@ final class MainViewModel: ObservableObject {
 
             // 6. Resolve status flags on matched set only
             let withFlags = try await resolveStatusFlags(matched: matched, season: ssn)
-            results = withFlags.sorted { $0.fullName < $1.fullName }
+            results = withFlags.sorted { a, b in
+                if let av = a.filterValues.first?.sortValue,
+                   let bv = b.filterValues.first?.sortValue,
+                   av != bv { return av > bv }
+                return a.fullName < b.fullName
+            }
 
         } catch {
             errorMessage = error.localizedDescription
@@ -154,11 +159,15 @@ final class MainViewModel: ObservableObject {
                 guard let c = counts, c.pa >= filters.minPA else { return nil }
                 guard filters.batterFilters.allSatisfy({ Metrics.passes($0, counts: c) }) else { return nil }
 
+                let filterValues = filters.batterFilters.map { f -> FilterValue in
+                    let v = Metrics.compute(f.metric, from: c) ?? 0
+                    return FilterValue(label: f.metric.rawValue, formatted: Metrics.format(f.metric, v), sortValue: v)
+                }
                 return MatchResult(
                     personId: player.personId, fullName: player.fullName,
                     position: player.position, teamName: player.teamName,
                     matchedLevel: matchedLevel, referenceSportId: referenceSportId,
-                    age: age, onIL: player.onIL, levelChangeNote: nil)
+                    age: age, onIL: player.onIL, levelChangeNote: nil, filterValues: filterValues)
 
             } else {
                 // Pitchers
@@ -195,11 +204,15 @@ final class MainViewModel: ObservableObject {
 
                 guard filters.pitcherFilters.allSatisfy({ Metrics.passes($0, counts: c) }) else { return nil }
 
+                let filterValues = filters.pitcherFilters.map { f -> FilterValue in
+                    let v = Metrics.compute(f.metric, from: c) ?? 0
+                    return FilterValue(label: f.metric.rawValue, formatted: Metrics.format(f.metric, v), sortValue: v)
+                }
                 return MatchResult(
                     personId: player.personId, fullName: player.fullName,
                     position: player.position, teamName: player.teamName,
                     matchedLevel: matchedLevel, referenceSportId: referenceSportId,
-                    age: age, onIL: player.onIL, levelChangeNote: nil)
+                    age: age, onIL: player.onIL, levelChangeNote: nil, filterValues: filterValues)
             }
         } catch {
             return nil
@@ -265,7 +278,7 @@ final class MainViewModel: ObservableObject {
                 personId: r.personId, fullName: r.fullName,
                 position: r.position, teamName: r.teamName,
                 matchedLevel: r.matchedLevel, referenceSportId: r.referenceSportId,
-                age: r.age, onIL: onIL, levelChangeNote: levelNote)
+                age: r.age, onIL: onIL, levelChangeNote: levelNote, filterValues: r.filterValues)
         }
     }
 }
@@ -400,6 +413,15 @@ struct MainView: View {
             }
             .font(.caption)
             .foregroundStyle(.secondary)
+            if !r.filterValues.isEmpty {
+                HStack(spacing: 12) {
+                    ForEach(Array(r.filterValues.enumerated()), id: \.offset) { _, fv in
+                        Text("\(fv.label): \(fv.formatted)")
+                            .monospacedDigit()
+                    }
+                }
+                .font(.subheadline.weight(.semibold))
+            }
         }
         .padding(.vertical, 2)
     }

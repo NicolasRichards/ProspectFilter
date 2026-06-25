@@ -151,9 +151,10 @@ struct BatterFilterRow: View {
                 .frame(maxWidth: 90)
                 Spacer()
                 TextField(filter.metric.placeholder, value: $filter.value, format: .number)
+                    .textFieldStyle(.roundedBorder)
                     .multilineTextAlignment(.trailing)
                     .keyboardType(.decimalPad)
-                    .frame(width: 70)
+                    .frame(width: 90)
                 if !filter.metric.unitLabel.isEmpty {
                     Text(filter.metric.unitLabel)
                         .foregroundStyle(.secondary)
@@ -184,9 +185,10 @@ struct PitcherFilterRow: View {
                 .frame(maxWidth: 90)
                 Spacer()
                 TextField(filter.metric.placeholder, value: $filter.value, format: .number)
+                    .textFieldStyle(.roundedBorder)
                     .multilineTextAlignment(.trailing)
                     .keyboardType(.decimalPad)
-                    .frame(width: 70)
+                    .frame(width: 90)
                 if !filter.metric.unitLabel.isEmpty {
                     Text(filter.metric.unitLabel)
                         .foregroundStyle(.secondary)
