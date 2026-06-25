@@ -42,22 +42,5 @@
 <!-- Funnel spout -->
 <path fill="rgba(255,255,255,0.88)" d="M 605,434 L 695,468 L 695,558 L 605,590 Z"/>
 
-<!-- SINGLE BATTER: right side, larger, more solid -->
-<g fill="#0B3016" opacity="0.88">
-  <!-- Head -->
-  <circle cx="840" cy="328" r="64"/>
-  <!-- Cap bill extending right/forward -->
-  <rect x="860" y="270" width="72" height="20" rx="6"/>
-  <!-- Torso -->
-  <rect x="786" y="394" width="108" height="170" rx="10"/>
-  <!-- Arms (suggestion via extended shoulder ellipse) -->
-  <ellipse cx="848" cy="422" rx="66" ry="26" transform="rotate(-20 848 422)"/>
-  <!-- Left leg -->
-  <rect x="789" y="560" width="46" height="138"/>
-  <!-- Right leg -->
-  <rect x="847" y="560" width="46" height="138"/>
-</g>
-<!-- Bat: diagonal line from hands up-right -->
-<line x1="892" y1="432" x2="980" y2="244" stroke="#0B3016" stroke-width="22" stroke-linecap="round" stroke-opacity="0.88"/>
 
 </svg>
