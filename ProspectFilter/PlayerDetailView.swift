@@ -151,7 +151,7 @@ struct PlayerDetailView: View {
                 GridRow {
                     statCell("ISO", Metrics.format(.iso, Metrics.compute(.iso, from: c) ?? 0))
                     statCell("K%",  Metrics.format(BatterMetric.kPct, Metrics.compute(BatterMetric.kPct, from: c) ?? 0))
-                    statCell("BB%", Metrics.format(.bbPct, Metrics.compute(.bbPct, from: c) ?? 0))
+                    statCell("BB%", Metrics.format(BatterMetric.bbPct, Metrics.compute(BatterMetric.bbPct, from: c) ?? 0))
                 }
                 GridRow {
                     statCell("SB",  Metrics.format(.sb, Metrics.compute(.sb, from: c) ?? 0))
@@ -217,7 +217,7 @@ struct PlayerDetailView: View {
                 }
                 GridRow {
                     statCell("K%",    Metrics.format(PitcherMetric.kPct, Metrics.compute(PitcherMetric.kPct, from: c) ?? 0))
-                    statCell("BB%",   Metrics.format(.bbPct,  Metrics.compute(.bbPct,  from: c) ?? 0))
+                    statCell("BB%",   Metrics.format(PitcherMetric.bbPct, Metrics.compute(PitcherMetric.bbPct, from: c) ?? 0))
                     statCell("K-BB%", Metrics.format(.kbbPct, Metrics.compute(.kbbPct, from: c) ?? 0))
                 }
             }
