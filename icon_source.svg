@@ -36,11 +36,8 @@
 
 </g>
 
-<!-- FUNNEL: sideways, opening left, spout pointing right -->
-<!-- Funnel body (wide trapezoid) -->
-<path fill="rgba(255,255,255,0.88)" d="M 328,230 L 328,794 L 605,590 L 605,434 Z"/>
-<!-- Funnel spout -->
-<path fill="rgba(255,255,255,0.88)" d="M 605,434 L 695,468 L 695,558 L 605,590 Z"/>
+<!-- FUNNEL: sideways, single combined path (body + spout) -->
+<path fill="rgba(255,255,255,0.90)" d="M 328,230 L 328,794 L 600,512 Z"/>
 
 
 </svg>
