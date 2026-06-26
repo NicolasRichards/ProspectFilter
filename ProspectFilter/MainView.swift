@@ -387,6 +387,12 @@ struct MainView: View {
         .onReceive(filterStore.$filters) { newFilters in
             vm.scheduleAutoSearch(filters: newFilters, mode: mode)
         }
+        .onChange(of: vm.maxAge)      { _, _ in vm.scheduleAutoSearch(filters: filterStore.filters, mode: mode) }
+        .onChange(of: vm.sportId)     { _, _ in vm.scheduleAutoSearch(filters: filterStore.filters, mode: mode) }
+        .onChange(of: vm.orgId)       { _, _ in vm.scheduleAutoSearch(filters: filterStore.filters, mode: mode) }
+        .onChange(of: vm.batterPos)   { _, _ in vm.scheduleAutoSearch(filters: filterStore.filters, mode: mode) }
+        .onChange(of: vm.pitcherRole) { _, _ in vm.scheduleAutoSearch(filters: filterStore.filters, mode: mode) }
+        .onChange(of: modeRaw)        { _, _ in vm.scheduleAutoSearch(filters: filterStore.filters, mode: mode) }
     }
 
     @ViewBuilder
