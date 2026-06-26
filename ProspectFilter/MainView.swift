@@ -298,8 +298,7 @@ struct MainView: View {
     ]
 
     var body: some View {
-        NavigationStack {
-            Form {
+        Form {
                 // Find Players at top so it's always visible
                 Section {
                     Button {
@@ -369,10 +368,9 @@ struct MainView: View {
                     }
                 }
             }
-            .navigationTitle("ProspectFilter")
-            .task { await vm.loadOrgs() }
-            .onChange(of: filterStore.filters) { _, _ in triggerAutoSearch() }
-        }
+        .task { await vm.loadOrgs() }
+        .onChange(of: filterStore.filters) { _, _ in triggerAutoSearch() }
+        .onAppear { triggerAutoSearch() }
     }
 
     private func triggerAutoSearch() {

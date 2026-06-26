@@ -3,17 +3,38 @@ import SwiftUI
 @main
 struct ProspectFilterApp: App {
     @StateObject private var filterStore = FilterStore()
-    @AppStorage("playerMode") private var playerMode: String = PlayerMode.batters.rawValue
 
     var body: some Scene {
         WindowGroup {
-            TabView {
-                FiltersView()
-                    .tabItem { Label("Filters", systemImage: "slider.horizontal.3") }
-                MainView()
-                    .tabItem { Label("Find", systemImage: "magnifyingglass") }
+            RootView()
+                .environmentObject(filterStore)
+        }
+    }
+}
+
+struct RootView: View {
+    @State private var showFilters = true
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if showFilters {
+                    FiltersView()
+                } else {
+                    MainView()
+                }
             }
-            .environmentObject(filterStore)
+            .navigationTitle("ProspectFilter")
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Picker("", selection: $showFilters) {
+                        Text("Filters").tag(true)
+                        Text("Find").tag(false)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 200)
+                }
+            }
         }
     }
 }

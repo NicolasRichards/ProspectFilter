@@ -10,22 +10,19 @@ struct FiltersView: View {
     private var mode: PlayerMode { PlayerMode(rawValue: modeRaw) ?? .batters }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                modePicker
+        Form {
+            modePicker
 
-                if mode == .batters {
-                    batterQualifier
-                    batterFiltersSection
-                } else {
-                    pitcherQualifier
-                    pitcherFiltersSection
-                }
+            if mode == .batters {
+                batterQualifier
+                batterFiltersSection
+            } else {
+                pitcherQualifier
+                pitcherFiltersSection
             }
-            .navigationTitle("Filters")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) { EditButton() }
-            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) { EditButton() }
         }
     }
 
@@ -172,7 +169,10 @@ struct BatterFilterRow: View {
                 MetricValuePicker(values: filter.metric.pickerValues,
                                   current: filter.value,
                                   format: { Metrics.format(filter.metric, $0) },
-                                  onSelect: { filter.value = $0 })
+                                  onSelect: {
+                                      filter.value = $0
+                                      withAnimation(.easeInOut(duration: 0.2)) { showPicker = false }
+                                  })
             }
         }
         .padding(.vertical, 2)
@@ -214,7 +214,10 @@ struct PitcherFilterRow: View {
                 MetricValuePicker(values: filter.metric.pickerValues,
                                   current: filter.value,
                                   format: { Metrics.format(filter.metric, $0) },
-                                  onSelect: { filter.value = $0 })
+                                  onSelect: {
+                                      filter.value = $0
+                                      withAnimation(.easeInOut(duration: 0.2)) { showPicker = false }
+                                  })
             }
         }
         .padding(.vertical, 2)
