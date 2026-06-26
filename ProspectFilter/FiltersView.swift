@@ -173,6 +173,7 @@ struct BatterFilterRow: View {
                                       filter.value = $0
                                       withAnimation(.easeInOut(duration: 0.2)) { showPicker = false }
                                   })
+                .frame(height: 150)
             }
         }
         .padding(.vertical, 2)
@@ -218,36 +219,55 @@ struct PitcherFilterRow: View {
                                       filter.value = $0
                                       withAnimation(.easeInOut(duration: 0.2)) { showPicker = false }
                                   })
+                .frame(height: 150)
             }
         }
         .padding(.vertical, 2)
     }
 }
 
-// MARK: - Shared wheel picker
+// MARK: - Shared wheel picker (UIViewRepresentable avoids SwiftUI Form scroll-intercept bug)
 
-struct MetricValuePicker: View {
+struct MetricValuePicker: UIViewRepresentable {
     let values: [Double]
     let current: Double
     let format: (Double) -> String
     let onSelect: (Double) -> Void
 
-    var body: some View {
-        let selectedIdx = Binding<Int>(
-            get: {
-                values.firstIndex(where: { abs($0 - current) < 0.0005 })
-                    ?? values.firstIndex(where: { $0 >= current })
-                    ?? 0
-            },
-            set: { onSelect(values[$0]) }
-        )
-        Picker("", selection: selectedIdx) {
-            ForEach(values.indices, id: \.self) { i in
-                Text(format(values[i])).tag(i)
-            }
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeUIView(context: Context) -> UIPickerView {
+        let picker = UIPickerView()
+        picker.dataSource = context.coordinator
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIView(_ uiView: UIPickerView, context: Context) {
+        context.coordinator.parent = self
+        let idx = values.firstIndex(where: { abs($0 - current) < 0.0005 })
+            ?? values.firstIndex(where: { $0 >= current })
+            ?? 0
+        uiView.reloadAllComponents()
+        uiView.selectRow(idx, inComponent: 0, animated: false)
+    }
+
+    final class Coordinator: NSObject, UIPickerViewDataSource, UIPickerViewDelegate {
+        var parent: MetricValuePicker
+        init(_ parent: MetricValuePicker) { self.parent = parent }
+
+        func numberOfComponents(in pickerView: UIPickerView) -> Int { 1 }
+
+        func pickerView(_ pickerView: UIPickerView, numberOfRowsInComponent component: Int) -> Int {
+            parent.values.count
         }
-        .pickerStyle(.wheel)
-        .frame(height: 150)
-        .transition(.opacity.combined(with: .move(edge: .top)))
+
+        func pickerView(_ pickerView: UIPickerView, titleForRow row: Int, forComponent component: Int) -> String? {
+            parent.format(parent.values[row])
+        }
+
+        func pickerView(_ pickerView: UIPickerView, didSelectRow row: Int, inComponent component: Int) {
+            parent.onSelect(parent.values[row])
+        }
     }
 }

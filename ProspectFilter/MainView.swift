@@ -12,6 +12,9 @@ final class MainViewModel: ObservableObject {
     @Published var searching = false
     @Published var errorMessage: String?
 
+    var lastSearchedFilters: FilterSet?
+    var lastSearchedMode: PlayerMode?
+
     let season = Calendar.current.component(.year, from: Date())
 
     func loadOrgs() async {
@@ -80,6 +83,8 @@ final class MainViewModel: ObservableObject {
             errorMessage = error.localizedDescription
             results = []
         }
+        lastSearchedFilters = filters
+        lastSearchedMode = mode
     }
 
     // MARK: - Roster building
@@ -368,6 +373,15 @@ struct MainView: View {
                 }
             }
         .task { await vm.loadOrgs() }
+        .onAppear { autoRefreshIfNeeded() }
+    }
+
+    private func autoRefreshIfNeeded() {
+        guard let lastFilters = vm.lastSearchedFilters, !vm.searching else { return }
+        let currentMode = mode
+        if lastFilters != filterStore.filters || vm.lastSearchedMode != currentMode {
+            Task { await vm.search(filters: filterStore.filters, mode: currentMode) }
+        }
     }
 
     @ViewBuilder

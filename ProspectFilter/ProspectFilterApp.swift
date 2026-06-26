@@ -47,7 +47,7 @@ struct RootView: View {
     }
 
     private func triggerAutoSearch() {
-        guard vm.results != nil, !vm.searching else { return }
+        guard vm.lastSearchedFilters != nil, !vm.searching else { return }
         filterDebounce?.cancel()
         filterDebounce = Task {
             try? await Task.sleep(for: .milliseconds(700))
