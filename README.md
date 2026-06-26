@@ -1,0 +1,1 @@
+ProspectFilter searches every MiLB player against the stat thresholds you set. Define your own filters — OBP, ERA, K%, SB, whatever you care about — and instantly see which prospects qualify. Search across all of affiliated ball or zoom in on a single organization, level, or age group.
