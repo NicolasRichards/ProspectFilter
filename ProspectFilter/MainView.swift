@@ -289,6 +289,7 @@ struct MainView: View {
     @EnvironmentObject private var filterStore: FilterStore
     @StateObject private var vm = MainViewModel()
     @AppStorage("playerMode") private var modeRaw: String = PlayerMode.batters.rawValue
+    @State private var filterDebounce: Task<Void, Never>?
 
     private var mode: PlayerMode { PlayerMode(rawValue: modeRaw) ?? .batters }
 
@@ -299,6 +300,22 @@ struct MainView: View {
     var body: some View {
         NavigationStack {
             Form {
+                // Find Players at top so it's always visible
+                Section {
+                    Button {
+                        Task { await vm.search(filters: filterStore.filters, mode: mode) }
+                    } label: {
+                        HStack {
+                            if vm.searching { ProgressView().padding(.trailing, 4) }
+                            Text(vm.searching ? "Searching…" : "Find Players")
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .disabled(vm.searching)
+                } footer: {
+                    filterSummary
+                }
+
                 Section {
                     Picker("Mode", selection: $modeRaw) {
                         ForEach(PlayerMode.allCases) { Text($0.rawValue).tag($0.rawValue) }
@@ -333,21 +350,6 @@ struct MainView: View {
                     }
                 }
 
-                Section {
-                    Button {
-                        Task { await vm.search(filters: filterStore.filters, mode: mode) }
-                    } label: {
-                        HStack {
-                            if vm.searching { ProgressView().padding(.trailing, 4) }
-                            Text(vm.searching ? "Searching…" : "Find Players")
-                                .frame(maxWidth: .infinity)
-                        }
-                    }
-                    .disabled(vm.searching)
-                } footer: {
-                    filterSummary
-                }
-
                 if let error = vm.errorMessage {
                     Section { Text(error).foregroundStyle(.red) }
                 }
@@ -369,6 +371,17 @@ struct MainView: View {
             }
             .navigationTitle("ProspectFilter")
             .task { await vm.loadOrgs() }
+            .onChange(of: filterStore.filters) { _, _ in triggerAutoSearch() }
+        }
+    }
+
+    private func triggerAutoSearch() {
+        guard vm.results != nil, !vm.searching else { return }
+        filterDebounce?.cancel()
+        filterDebounce = Task {
+            try? await Task.sleep(for: .milliseconds(700))
+            guard !Task.isCancelled else { return }
+            await vm.search(filters: filterStore.filters, mode: mode)
         }
     }
 

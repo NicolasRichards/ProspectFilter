@@ -1,5 +1,8 @@
 import SwiftUI
 
+private let defaultMinPA = 50.0
+private let defaultMinIP = 20.0
+
 struct FiltersView: View {
     @EnvironmentObject private var filterStore: FilterStore
     @AppStorage("playerMode") private var modeRaw: String = PlayerMode.batters.rawValue
@@ -21,12 +24,7 @@ struct FiltersView: View {
             }
             .navigationTitle("Filters")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Add Filter", action: addFilter)
-                }
-                ToolbarItem(placement: .topBarLeading) {
-                    EditButton()
-                }
+                ToolbarItem(placement: .topBarLeading) { EditButton() }
             }
         }
     }
@@ -48,9 +46,17 @@ struct FiltersView: View {
                 Text("Minimum PA")
                 Spacer()
                 TextField("50", value: $filterStore.filters.minPA, format: .number)
+                    .textFieldStyle(.roundedBorder)
                     .multilineTextAlignment(.trailing)
                     .keyboardType(.numberPad)
-                    .frame(width: 60)
+                    .frame(width: 70)
+                if filterStore.filters.minPA != defaultMinPA {
+                    Button("Reset") { filterStore.filters.minPA = defaultMinPA }
+                        .font(.caption)
+                }
+            }
+            Button(action: addFilter) {
+                Label("Add Filter", systemImage: "plus.circle.fill")
             }
         } header: {
             Text("Qualifier (always applied)")
@@ -60,7 +66,7 @@ struct FiltersView: View {
     private var batterFiltersSection: some View {
         Section {
             if filterStore.filters.batterFilters.isEmpty {
-                Text("Tap Add Filter to define a metric threshold.")
+                Text("No metric filters yet.")
                     .foregroundStyle(.secondary)
                     .font(.subheadline)
             } else {
@@ -72,10 +78,6 @@ struct FiltersView: View {
             }
         } header: {
             Text("Metric Filters (all must match)")
-        } footer: {
-            if !filterStore.filters.batterFilters.isEmpty {
-                Text("Rates: enter as decimals (.300). Percentages: enter as numbers (25 for 25%). Swipe to delete.")
-            }
         }
     }
 
@@ -87,9 +89,17 @@ struct FiltersView: View {
                 Text("Minimum IP")
                 Spacer()
                 TextField("20", value: $filterStore.filters.minIP, format: .number)
+                    .textFieldStyle(.roundedBorder)
                     .multilineTextAlignment(.trailing)
                     .keyboardType(.numberPad)
-                    .frame(width: 60)
+                    .frame(width: 70)
+                if filterStore.filters.minIP != defaultMinIP {
+                    Button("Reset") { filterStore.filters.minIP = defaultMinIP }
+                        .font(.caption)
+                }
+            }
+            Button(action: addFilter) {
+                Label("Add Filter", systemImage: "plus.circle.fill")
             }
         } header: {
             Text("Qualifier (always applied)")
@@ -99,7 +109,7 @@ struct FiltersView: View {
     private var pitcherFiltersSection: some View {
         Section {
             if filterStore.filters.pitcherFilters.isEmpty {
-                Text("Tap Add Filter to define a metric threshold.")
+                Text("No metric filters yet.")
                     .foregroundStyle(.secondary)
                     .font(.subheadline)
             } else {
@@ -111,10 +121,6 @@ struct FiltersView: View {
             }
         } header: {
             Text("Metric Filters (all must match)")
-        } footer: {
-            if !filterStore.filters.pitcherFilters.isEmpty {
-                Text("ERA/WHIP: standard values. BAA as decimal (.250). Percentages as numbers (25 for 25%). Swipe to delete.")
-            }
         }
     }
 
@@ -133,6 +139,7 @@ struct FiltersView: View {
 
 struct BatterFilterRow: View {
     @Binding var filter: BatterFilter
+    @State private var showPicker = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -141,7 +148,8 @@ struct BatterFilterRow: View {
             }
             .onChange(of: filter.metric) { _, m in
                 filter.comparator = m.defaultComparator
-                filter.value = 0
+                filter.value = m.defaultValue
+                showPicker = false
             }
             HStack(spacing: 12) {
                 Picker("", selection: $filter.comparator) {
@@ -150,15 +158,21 @@ struct BatterFilterRow: View {
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 90)
                 Spacer()
-                TextField(filter.metric.placeholder, value: $filter.value, format: .number)
-                    .textFieldStyle(.roundedBorder)
-                    .multilineTextAlignment(.trailing)
-                    .keyboardType(.decimalPad)
-                    .frame(width: 90)
-                if !filter.metric.unitLabel.isEmpty {
-                    Text(filter.metric.unitLabel)
-                        .foregroundStyle(.secondary)
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { showPicker.toggle() }
+                } label: {
+                    Text(Metrics.format(filter.metric, filter.value))
+                        .monospacedDigit()
+                        .frame(minWidth: 72, alignment: .trailing)
                 }
+                .buttonStyle(.bordered)
+                .tint(showPicker ? .accentColor : nil)
+            }
+            if showPicker {
+                MetricValuePicker(values: filter.metric.pickerValues,
+                                  current: filter.value,
+                                  format: { Metrics.format(filter.metric, $0) },
+                                  onSelect: { filter.value = $0 })
             }
         }
         .padding(.vertical, 2)
@@ -167,6 +181,7 @@ struct BatterFilterRow: View {
 
 struct PitcherFilterRow: View {
     @Binding var filter: PitcherFilter
+    @State private var showPicker = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -175,7 +190,8 @@ struct PitcherFilterRow: View {
             }
             .onChange(of: filter.metric) { _, m in
                 filter.comparator = m.defaultComparator
-                filter.value = 0
+                filter.value = m.defaultValue
+                showPicker = false
             }
             HStack(spacing: 12) {
                 Picker("", selection: $filter.comparator) {
@@ -184,17 +200,51 @@ struct PitcherFilterRow: View {
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 90)
                 Spacer()
-                TextField(filter.metric.placeholder, value: $filter.value, format: .number)
-                    .textFieldStyle(.roundedBorder)
-                    .multilineTextAlignment(.trailing)
-                    .keyboardType(.decimalPad)
-                    .frame(width: 90)
-                if !filter.metric.unitLabel.isEmpty {
-                    Text(filter.metric.unitLabel)
-                        .foregroundStyle(.secondary)
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { showPicker.toggle() }
+                } label: {
+                    Text(Metrics.format(filter.metric, filter.value))
+                        .monospacedDigit()
+                        .frame(minWidth: 72, alignment: .trailing)
                 }
+                .buttonStyle(.bordered)
+                .tint(showPicker ? .accentColor : nil)
+            }
+            if showPicker {
+                MetricValuePicker(values: filter.metric.pickerValues,
+                                  current: filter.value,
+                                  format: { Metrics.format(filter.metric, $0) },
+                                  onSelect: { filter.value = $0 })
             }
         }
         .padding(.vertical, 2)
+    }
+}
+
+// MARK: - Shared wheel picker
+
+struct MetricValuePicker: View {
+    let values: [Double]
+    let current: Double
+    let format: (Double) -> String
+    let onSelect: (Double) -> Void
+
+    var body: some View {
+        let selectedIdx = Binding<Int>(
+            get: {
+                values.firstIndex(where: { abs($0 - current) < 0.0005 })
+                    ?? values.firstIndex(where: { $0 >= current })
+                    ?? 0
+            },
+            set: { onSelect(values[$0]) }
+        )
+        Picker("", selection: selectedIdx) {
+            ForEach(values.indices, id: \.self) { i in
+                Text(format(values[i])).tag(i)
+            }
+        }
+        .pickerStyle(.wheel)
+        .frame(height: 150)
+        .transition(.opacity.combined(with: .move(edge: .top)))
     }
 }

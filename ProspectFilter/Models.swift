@@ -92,17 +92,38 @@ enum BatterMetric: String, CaseIterable, Identifiable, Codable {
     //   Count stats (sb/g): raw integer                     (20 entered as 20)
     var isPercent: Bool { self == .sbPct || self == .bbPct || self == .kPct }
 
-    var placeholder: String {
+    /// Ordered picker values (integer arithmetic avoids float accumulation).
+    var pickerValues: [Double] {
         switch self {
-        case .avg, .obp, .slg, .ops, .iso: return "0.000"
-        case .sb, .g: return "0"
-        case .bbk: return "0.00"
-        case .sbPct, .bbPct, .kPct: return "0"
+        case .avg:   return stride(from: 100, through: 400, by: 5).map { Double($0) / 1000 }
+        case .obp:   return stride(from: 100, through: 500, by: 5).map { Double($0) / 1000 }
+        case .slg:   return stride(from: 100, through: 750, by: 5).map { Double($0) / 1000 }
+        case .ops:   return stride(from: 200, through: 1300, by: 10).map { Double($0) / 1000 }
+        case .iso:   return stride(from: 0, through: 350, by: 5).map { Double($0) / 1000 }
+        case .sb:    return stride(from: 0, through: 60, by: 1).map(Double.init)
+        case .sbPct: return stride(from: 0, through: 100, by: 5).map(Double.init)
+        case .bbPct: return stride(from: 0, through: 30, by: 1).map(Double.init)
+        case .kPct:  return stride(from: 0, through: 45, by: 1).map(Double.init)
+        case .bbk:   return stride(from: 0, through: 200, by: 5).map { Double($0) / 100 }
+        case .g:     return stride(from: 0, through: 162, by: 5).map(Double.init)
         }
     }
 
-    var unitLabel: String {
-        isPercent ? "%" : ""
+    /// Sensible starting value when a new filter is added.
+    var defaultValue: Double {
+        switch self {
+        case .avg:   return 0.250
+        case .obp:   return 0.330
+        case .slg:   return 0.400
+        case .ops:   return 0.720
+        case .iso:   return 0.150
+        case .sb:    return 10
+        case .sbPct: return 65
+        case .bbPct: return 10
+        case .kPct:  return 25
+        case .bbk:   return 0.50
+        case .g:     return 50
+        }
     }
 }
 
@@ -121,16 +142,31 @@ enum PitcherMetric: String, CaseIterable, Identifiable, Codable {
 
     var isPercent: Bool { self == .kPct || self == .bbPct || self == .kbbPct }
 
-    var placeholder: String {
+    var pickerValues: [Double] {
         switch self {
-        case .era, .whip: return "0.00"
-        case .baa: return "0.000"
-        case .kPct, .bbPct, .kbbPct: return "0"
-        case .g, .gs: return "0"
+        case .era:    return stride(from: 0, through: 1000, by: 25).map { Double($0) / 100 }
+        case .whip:   return stride(from: 50, through: 300, by: 5).map { Double($0) / 100 }
+        case .baa:    return stride(from: 100, through: 400, by: 5).map { Double($0) / 1000 }
+        case .kPct:   return stride(from: 0, through: 45, by: 1).map(Double.init)
+        case .bbPct:  return stride(from: 0, through: 25, by: 1).map(Double.init)
+        case .kbbPct: return stride(from: -10, through: 40, by: 1).map(Double.init)
+        case .g:      return stride(from: 0, through: 80, by: 5).map(Double.init)
+        case .gs:     return stride(from: 0, through: 35, by: 1).map(Double.init)
         }
     }
 
-    var unitLabel: String { isPercent ? "%" : "" }
+    var defaultValue: Double {
+        switch self {
+        case .era:    return 4.00
+        case .whip:   return 1.30
+        case .baa:    return 0.250
+        case .kPct:   return 22
+        case .bbPct:  return 10
+        case .kbbPct: return 10
+        case .g:      return 20
+        case .gs:     return 10
+        }
+    }
 }
 
 enum Comparator: String, CaseIterable, Identifiable, Codable {
@@ -148,7 +184,7 @@ struct BatterFilter: Identifiable, Codable, Equatable {
         id = UUID()
         self.metric = metric
         comparator = metric.defaultComparator
-        value = 0
+        value = metric.defaultValue
     }
 }
 
@@ -162,7 +198,7 @@ struct PitcherFilter: Identifiable, Codable, Equatable {
         id = UUID()
         self.metric = metric
         comparator = metric.defaultComparator
-        value = 0
+        value = metric.defaultValue
     }
 }
 
