@@ -14,6 +14,7 @@ struct ProspectFilterApp: App {
 
 struct RootView: View {
     @State private var showFilters = true
+    @State private var showHelp = false
 
     var body: some View {
         NavigationStack {
@@ -29,6 +30,11 @@ struct RootView: View {
             }
             .navigationTitle("ProspectFilter")
             .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showHelp = true } label: {
+                        Image(systemName: "questionmark.circle")
+                    }
+                }
                 ToolbarItem(placement: .principal) {
                     Picker("", selection: $showFilters) {
                         Text("Filters").tag(true)
@@ -40,6 +46,9 @@ struct RootView: View {
                 if showFilters {
                     ToolbarItem(placement: .topBarLeading) { EditButton() }
                 }
+            }
+            .navigationDestination(isPresented: $showHelp) {
+                HelpView()
             }
         }
     }
