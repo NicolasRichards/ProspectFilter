@@ -21,9 +21,6 @@ struct FiltersView: View {
                 pitcherFiltersSection
             }
         }
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) { EditButton() }
-        }
     }
 
     private var modePicker: some View {
@@ -240,6 +237,18 @@ struct MetricValuePicker: UIViewRepresentable {
         let picker = UIPickerView()
         picker.dataSource = context.coordinator
         picker.delegate = context.coordinator
+        // Disable touch-delay on the Form's backing UIScrollView so the first
+        // scroll gesture isn't intercepted before reaching the picker.
+        DispatchQueue.main.async {
+            var v: UIView? = picker.superview
+            while let sv = v {
+                if let scrollView = sv as? UIScrollView {
+                    scrollView.delaysContentTouches = false
+                    break
+                }
+                v = sv.superview
+            }
+        }
         return picker
     }
 
@@ -248,8 +257,13 @@ struct MetricValuePicker: UIViewRepresentable {
         let idx = values.firstIndex(where: { abs($0 - current) < 0.0005 })
             ?? values.firstIndex(where: { $0 >= current })
             ?? 0
-        uiView.reloadAllComponents()
-        uiView.selectRow(idx, inComponent: 0, animated: false)
+        // Only reload when row count changes (metric changed); avoid disrupting scroll.
+        if uiView.numberOfRows(inComponent: 0) != values.count {
+            uiView.reloadAllComponents()
+        }
+        if uiView.selectedRow(inComponent: 0) != idx {
+            uiView.selectRow(idx, inComponent: 0, animated: false)
+        }
     }
 
     final class Coordinator: NSObject, UIPickerViewDataSource, UIPickerViewDelegate {

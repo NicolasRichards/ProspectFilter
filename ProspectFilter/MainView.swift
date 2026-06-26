@@ -292,8 +292,9 @@ final class MainViewModel: ObservableObject {
 
 struct MainView: View {
     @EnvironmentObject private var filterStore: FilterStore
-    @EnvironmentObject private var vm: MainViewModel
+    @StateObject private var vm = MainViewModel()
     @AppStorage("playerMode") private var modeRaw: String = PlayerMode.batters.rawValue
+    @State private var filterDebounce: Task<Void, Never>?
 
     private var mode: PlayerMode { PlayerMode(rawValue: modeRaw) ?? .batters }
 
@@ -373,14 +374,16 @@ struct MainView: View {
                 }
             }
         .task { await vm.loadOrgs() }
-        .onAppear { autoRefreshIfNeeded() }
+        .onChange(of: filterStore.filters) { _, _ in triggerAutoSearch() }
     }
 
-    private func autoRefreshIfNeeded() {
-        guard let lastFilters = vm.lastSearchedFilters, !vm.searching else { return }
-        let currentMode = mode
-        if lastFilters != filterStore.filters || vm.lastSearchedMode != currentMode {
-            Task { await vm.search(filters: filterStore.filters, mode: currentMode) }
+    private func triggerAutoSearch() {
+        guard vm.lastSearchedFilters != nil, !vm.searching else { return }
+        filterDebounce?.cancel()
+        filterDebounce = Task {
+            try? await Task.sleep(for: .milliseconds(700))
+            guard !Task.isCancelled else { return }
+            await vm.search(filters: filterStore.filters, mode: mode)
         }
     }
 
