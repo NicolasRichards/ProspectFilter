@@ -14,8 +14,19 @@ final class MainViewModel: ObservableObject {
 
     var lastSearchedFilters: FilterSet?
     var lastSearchedMode: PlayerMode?
+    private var debounceTask: Task<Void, Never>?
 
     let season = Calendar.current.component(.year, from: Date())
+
+    func scheduleAutoSearch(filters: FilterSet, mode: PlayerMode) {
+        guard lastSearchedFilters != nil, !searching else { return }
+        debounceTask?.cancel()
+        debounceTask = Task {
+            try? await Task.sleep(for: .milliseconds(700))
+            guard !Task.isCancelled else { return }
+            await search(filters: filters, mode: mode)
+        }
+    }
 
     func loadOrgs() async {
         if orgs.isEmpty { orgs = (try? await MLBClient.orgs(season: season)) ?? [] }
@@ -294,7 +305,6 @@ struct MainView: View {
     @EnvironmentObject private var filterStore: FilterStore
     @StateObject private var vm = MainViewModel()
     @AppStorage("playerMode") private var modeRaw: String = PlayerMode.batters.rawValue
-    @State private var filterDebounce: Task<Void, Never>?
 
     private var mode: PlayerMode { PlayerMode(rawValue: modeRaw) ?? .batters }
 
@@ -374,16 +384,8 @@ struct MainView: View {
                 }
             }
         .task { await vm.loadOrgs() }
-        .onChange(of: filterStore.filters) { _, _ in triggerAutoSearch() }
-    }
-
-    private func triggerAutoSearch() {
-        guard vm.lastSearchedFilters != nil, !vm.searching else { return }
-        filterDebounce?.cancel()
-        filterDebounce = Task {
-            try? await Task.sleep(for: .milliseconds(700))
-            guard !Task.isCancelled else { return }
-            await vm.search(filters: filterStore.filters, mode: mode)
+        .onReceive(filterStore.$filters) { newFilters in
+            vm.scheduleAutoSearch(filters: newFilters, mode: mode)
         }
     }
 
