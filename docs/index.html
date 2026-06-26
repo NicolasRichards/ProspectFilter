@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ProspectFilter</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background-color: #0C1F10;
+      color: #F5F5F5;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 60px 24px;
+    }
+
+    .icon {
+      width: 120px;
+      height: 120px;
+      border-radius: 26px;
+      margin-bottom: 32px;
+      display: block;
+    }
+
+    h1 {
+      font-size: 36px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      margin-bottom: 8px;
+    }
+
+    .tagline {
+      font-size: 18px;
+      color: #888888;
+      margin-bottom: 48px;
+    }
+
+    h2 {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      color: #888888;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+      margin-top: 48px;
+    }
+
+    p {
+      font-size: 16px;
+      color: #CCCCCC;
+      margin-bottom: 16px;
+    }
+
+    ul {
+      list-style: none;
+      margin-bottom: 16px;
+    }
+
+    ul li {
+      font-size: 16px;
+      color: #CCCCCC;
+      padding: 6px 0;
+      border-bottom: 1px solid #162B1A;
+    }
+
+    ul li:last-child {
+      border-bottom: none;
+    }
+
+    ul li::before {
+      content: "→ ";
+      color: #888888;
+    }
+
+    a {
+      color: #5DBD6B;
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px solid #162B1A;
+      margin: 48px 0;
+    }
+
+    .footer {
+      font-size: 13px;
+      color: #555555;
+      margin-top: 64px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <img src="AppIcon.png" alt="ProspectFilter icon" class="icon">
+    <h1>ProspectFilter</h1>
+    <p class="tagline">Find the minor league prospects who meet your standards.</p>
+
+    <p>
+      ProspectFilter searches every MiLB player against the stat thresholds you set.
+      Define your own filters — OBP, ERA, K%, SB, whatever you care about — and instantly
+      see which prospects qualify. Search across all of affiliated ball or zoom in on a
+      single organization, level, or age group.
+    </p>
+
+    <h2>Features</h2>
+    <ul>
+      <li>Filter batters or pitchers by any combination of metrics</li>
+      <li>Covers all affiliated MiLB levels: AAA through Rookie Complex</li>
+      <li>Narrow results by organization, level, age, position, or role</li>
+      <li>Results update automatically as you adjust filters</li>
+      <li>Per-player stat breakdown by level for the current season</li>
+      <li>IL status and level-change flags on every result</li>
+      <li>No ads, no account, no subscription</li>
+    </ul>
+
+    <hr class="divider">
+
+    <h2>Support</h2>
+    <p>
+      For questions, bug reports, or feedback, email:<br>
+      <a href="mailto:nicolasrichards@me.com">nicolasrichards@me.com</a>
+    </p>
+
+    <hr class="divider">
+
+    <h2>Privacy Policy</h2>
+    <p>
+      ProspectFilter does not collect, store, or share any personal data.
+      No analytics, no tracking, no account required.
+    </p>
+    <p>
+      Player and stat data is fetched from the publicly available MLB Stats API
+      (<a href="https://statsapi.mlb.com" target="_blank">statsapi.mlb.com</a>)
+      for personal, non-commercial use.
+    </p>
+
+    <div class="footer">
+      <p>© 2026 Nicolas Richards &nbsp;·&nbsp;
+        <a href="mailto:nicolasrichards@me.com">Contact</a>
+      </p>
+    </div>
+
+  </div>
+</body>
+</html>
