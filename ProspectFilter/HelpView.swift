@@ -3,37 +3,37 @@ import SwiftUI
 struct HelpView: View {
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 28) {
 
-                Text("This app finds batters or pitchers who meet certain metrics. Which metrics? The ones YOU set. You can be as general or restrictive as you wish. Add multiple filters to narrow the results, or just one to get almost everyone. You are in control.")
+                Text("This app finds batters or pitchers who meet certain metrics. Which metrics? The ones YOU set. You can be as general or restrictive as you wish. Add multiple filters to narrow the results, or just one to get almost everyone.")
                     .font(.body)
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, 4)
 
-                Group {
-                    HelpSection(title: "Filters tab") {
-                        HelpItem(title: "Batters / Pitchers",
-                                 detail: "Toggle at the top of the Filters tab switches between batter and pitcher mode. Results and filter options update accordingly.")
-                        HelpItem(title: "Qualifier",
-                                 detail: "Sets the minimum plate appearances (batters) or innings pitched (pitchers) a player must have. Tap the number to edit it. Tap Reset to restore the default (50 PA / 20 IP).")
-                        HelpItem(title: "Adding a filter",
-                                 detail: "Tap Add Filter to add a metric threshold. Pick a metric from the dropdown (AVG, OBP, ERA, etc.), choose ≥ or ≤, then tap the value button to open the wheel and set your cutoff.")
-                        HelpItem(title: "Removing a filter",
-                                 detail: "Tap Edit (top left) to enter edit mode. Tap the red circle next to any filter, then Delete. Tap Done when finished.")
-                        HelpItem(title: "Reordering filters",
-                                 detail: "In Edit mode, drag the handle on the right of each filter row to reorder. The first filter also determines the sort order of results.")
-                    }
+                HelpSection(title: "Filters tab", color: .blue) {
+                    HelpItem(icon: "person.2",         title: "Batters / Pitchers",
+                             detail: "Toggle at the top switches between batter and pitcher mode.")
+                    HelpItem(icon: "slider.horizontal.3", title: "Qualifier",
+                             detail: "Sets the minimum PA or IP a player must have. Tap the number to change it. Reset restores the default (50 PA / 20 IP).")
+                    HelpItem(icon: "plus.circle",      title: "Adding a filter",
+                             detail: "Tap Add Filter, pick a metric (AVG, OBP, ERA, etc.), choose ≥ or ≤, then tap the value to set your cutoff on the wheel.")
+                    HelpItem(icon: "minus.circle",     title: "Removing a filter",
+                             detail: "Tap Edit, then the red circle next to any filter, then Delete. Tap Done when finished.")
+                    HelpItem(icon: "arrow.up.arrow.down", title: "Reordering filters",
+                             detail: "In Edit mode, drag the handle on the right to reorder. The first filter determines the sort order of results.")
+                }
 
-                    HelpSection(title: "Find tab") {
-                        HelpItem(title: "Cohort",
-                                 detail: "Narrow the player pool by organization, level (AAA through Rookie), max age, and position or role before the stat filters are applied.")
-                        HelpItem(title: "Find Players",
-                                 detail: "Tap Find Players to run the search. Results appear below, sorted by the first filter's value.")
-                        HelpItem(title: "Auto-refresh",
-                                 detail: "After your first search, results update automatically whenever you change a filter, qualifier, cohort setting, or mode. No need to tap Find Players again.")
-                        HelpItem(title: "Results",
-                                 detail: "Each row shows the player's position, age, level, team, and their values for each active filter. An IL badge marks players currently on the injured list. A blue note appears if the player has since moved to a different level than where their stats were compiled.")
-                        HelpItem(title: "Player detail",
-                                 detail: "Tap any player row to see their full stat line broken out by level for the current season.")
-                    }
+                HelpSection(title: "Find tab", color: .green) {
+                    HelpItem(icon: "scope",            title: "Cohort",
+                             detail: "Narrow by organization, level (AAA through Rookie), max age, and position or role.")
+                    HelpItem(icon: "magnifyingglass",  title: "Find Players",
+                             detail: "Tap Find Players to run the search. Results appear below, sorted by the first filter's value.")
+                    HelpItem(icon: "arrow.clockwise",  title: "Auto-refresh",
+                             detail: "After your first search, results update automatically whenever you change any filter or cohort setting.")
+                    HelpItem(icon: "list.bullet",      title: "Results",
+                             detail: "Each row shows position, age, level, team, and filter values. An IL badge marks injured players. A blue note flags a level change since their stats were compiled.")
+                    HelpItem(icon: "person.crop.rectangle", title: "Player detail",
+                             detail: "Tap any row to see their full stat line by level for the current season.")
                 }
             }
             .padding()
@@ -47,25 +47,41 @@ struct HelpView: View {
 
 private struct HelpSection<Content: View>: View {
     let title: String
+    let color: Color
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 0) {
             Text(title)
-                .font(.title2.weight(.semibold))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(color, in: Capsule())
+                .padding(.bottom, 14)
+
             content()
         }
     }
 }
 
 private struct HelpItem: View {
+    let icon: String
     let title: String
     let detail: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title).font(.headline)
-            Text(detail).font(.subheadline).foregroundStyle(.secondary)
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 18))
+                .foregroundStyle(.secondary)
+                .frame(width: 24)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.headline)
+                Text(detail).font(.subheadline).foregroundStyle(.secondary)
+            }
         }
+        .padding(.bottom, 16)
     }
 }
