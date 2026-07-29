@@ -26,6 +26,7 @@ struct FiltersView: View {
                 pitcherFiltersSection
             }
         }
+        .tint(.blue)
     }
 
     private var modePicker: some View {
@@ -72,7 +73,7 @@ struct FiltersView: View {
                 Label("Add Filter", systemImage: "plus.circle.fill")
             }
         } header: {
-            Text("Qualifier (always applied)")
+            TabSectionHeader(title: "Qualifier (always applied)", color: .blue)
         }
     }
 
@@ -90,7 +91,7 @@ struct FiltersView: View {
                 .onMove { filterStore.filters.batterFilters.move(fromOffsets: $0, toOffset: $1) }
             }
         } header: {
-            Text("Metric Filters (all must match)")
+            TabSectionHeader(title: "Metric Filters (all must match)", color: .blue)
         }
     }
 
@@ -129,7 +130,7 @@ struct FiltersView: View {
                 Label("Add Filter", systemImage: "plus.circle.fill")
             }
         } header: {
-            Text("Qualifier (always applied)")
+            TabSectionHeader(title: "Qualifier (always applied)", color: .blue)
         }
     }
 
@@ -147,7 +148,7 @@ struct FiltersView: View {
                 .onMove { filterStore.filters.pitcherFilters.move(fromOffsets: $0, toOffset: $1) }
             }
         } header: {
-            Text("Metric Filters (all must match)")
+            TabSectionHeader(title: "Metric Filters (all must match)", color: .blue)
         }
     }
 
@@ -253,6 +254,22 @@ struct PitcherFilterRow: View {
             }
         }
         .padding(.vertical, 2)
+    }
+}
+
+// MARK: - Shared section header
+
+struct TabSectionHeader: View {
+    let title: String
+    let color: Color
+    var body: some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(color, in: Capsule())
+            .textCase(nil)
     }
 }
 

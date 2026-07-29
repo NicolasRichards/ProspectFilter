@@ -337,7 +337,7 @@ struct MainView: View {
                     .pickerStyle(.segmented)
                 }
 
-                Section("Cohort") {
+                Section {
                     Picker("Organization", selection: $vm.orgId) {
                         Text("All organizations").tag(Int?.none)
                         ForEach(vm.orgs) { Text($0.name).tag(Int?.some($0.id)) }
@@ -362,6 +362,8 @@ struct MainView: View {
                             ForEach(PitcherRole.allCases) { Text($0.rawValue).tag($0) }
                         }
                     }
+                } header: {
+                    TabSectionHeader(title: "Cohort", color: .green)
                 }
 
                 if let error = vm.errorMessage {
@@ -369,9 +371,7 @@ struct MainView: View {
                 }
 
                 if let results = vm.results {
-                    Section(results.isEmpty
-                            ? "No players match"
-                            : "\(results.count) player\(results.count == 1 ? "" : "s")") {
+                    Section {
                         ForEach(results) { r in
                             NavigationLink {
                                 PlayerDetailView(personId: r.personId, fullName: r.fullName,
@@ -380,9 +380,17 @@ struct MainView: View {
                                 resultRow(r)
                             }
                         }
+                    } header: {
+                        TabSectionHeader(
+                            title: results.isEmpty
+                                ? "No players match"
+                                : "\(results.count) player\(results.count == 1 ? "" : "s")",
+                            color: .green
+                        )
                     }
                 }
             }
+        .tint(.green)
         .task { await vm.loadOrgs() }
         .onReceive(filterStore.$filters) { newFilters in
             vm.scheduleAutoSearch(filters: newFilters, mode: mode)
