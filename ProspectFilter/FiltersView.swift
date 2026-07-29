@@ -3,11 +3,13 @@ import SwiftUI
 private let defaultMinPA = 50.0
 private let defaultMinIP = 20.0
 
+private let paPickerValues: [Double] = stride(from: 0, through: 300, by: 5).map(Double.init)
 private let ipPickerValues: [Double] = stride(from: 0, through: 100, by: 5).map(Double.init)
 
 struct FiltersView: View {
     @EnvironmentObject private var filterStore: FilterStore
     @AppStorage("playerMode") private var modeRaw: String = PlayerMode.batters.rawValue
+    @State private var showPAPicker = false
     @State private var showIPPicker = false
 
     private var mode: PlayerMode { PlayerMode(rawValue: modeRaw) ?? .batters }
@@ -42,15 +44,29 @@ struct FiltersView: View {
             HStack {
                 Text("Minimum PA")
                 Spacer()
-                TextField("50", value: $filterStore.filters.minPA, format: .number)
-                    .textFieldStyle(.roundedBorder)
-                    .multilineTextAlignment(.trailing)
-                    .keyboardType(.numberPad)
-                    .frame(width: 70)
                 if filterStore.filters.minPA != defaultMinPA {
                     Button("Reset") { filterStore.filters.minPA = defaultMinPA }
                         .font(.caption)
                 }
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { showPAPicker.toggle() }
+                } label: {
+                    Text("\(Int(filterStore.filters.minPA))")
+                        .monospacedDigit()
+                        .frame(minWidth: 44, alignment: .trailing)
+                }
+                .buttonStyle(.bordered)
+                .tint(showPAPicker ? .accentColor : nil)
+            }
+            if showPAPicker {
+                MetricValuePicker(values: paPickerValues,
+                                  current: filterStore.filters.minPA,
+                                  format: { "\(Int($0))" },
+                                  onSelect: {
+                                      filterStore.filters.minPA = $0
+                                      withAnimation(.easeInOut(duration: 0.2)) { showPAPicker = false }
+                                  })
+                .frame(height: 150)
             }
             Button(action: addFilter) {
                 Label("Add Filter", systemImage: "plus.circle.fill")
