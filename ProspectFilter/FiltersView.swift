@@ -3,9 +3,12 @@ import SwiftUI
 private let defaultMinPA = 50.0
 private let defaultMinIP = 20.0
 
+private let ipPickerValues: [Double] = stride(from: 0, through: 100, by: 5).map(Double.init)
+
 struct FiltersView: View {
     @EnvironmentObject private var filterStore: FilterStore
     @AppStorage("playerMode") private var modeRaw: String = PlayerMode.batters.rawValue
+    @State private var showIPPicker = false
 
     private var mode: PlayerMode { PlayerMode(rawValue: modeRaw) ?? .batters }
 
@@ -82,15 +85,29 @@ struct FiltersView: View {
             HStack {
                 Text("Minimum IP")
                 Spacer()
-                TextField("20", value: $filterStore.filters.minIP, format: .number)
-                    .textFieldStyle(.roundedBorder)
-                    .multilineTextAlignment(.trailing)
-                    .keyboardType(.numberPad)
-                    .frame(width: 70)
                 if filterStore.filters.minIP != defaultMinIP {
                     Button("Reset") { filterStore.filters.minIP = defaultMinIP }
                         .font(.caption)
                 }
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { showIPPicker.toggle() }
+                } label: {
+                    Text("\(Int(filterStore.filters.minIP))")
+                        .monospacedDigit()
+                        .frame(minWidth: 44, alignment: .trailing)
+                }
+                .buttonStyle(.bordered)
+                .tint(showIPPicker ? .accentColor : nil)
+            }
+            if showIPPicker {
+                MetricValuePicker(values: ipPickerValues,
+                                  current: filterStore.filters.minIP,
+                                  format: { "\(Int($0))" },
+                                  onSelect: {
+                                      filterStore.filters.minIP = $0
+                                      withAnimation(.easeInOut(duration: 0.2)) { showIPPicker = false }
+                                  })
+                .frame(height: 150)
             }
             Button(action: addFilter) {
                 Label("Add Filter", systemImage: "plus.circle.fill")
