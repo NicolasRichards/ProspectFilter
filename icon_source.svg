@@ -1,10 +1,10 @@
 <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="1024" height="1024">
 <title>ProspectFilter app icon</title>
 
-<rect width="1024" height="1024" fill="#26713B"/>
+<rect width="1024" height="1024" fill="#448F38"/>
 
 <!-- CROWD: 4 overlapping player silhouettes, left third -->
-<g fill="#0B3016">
+<g fill="#173D12">
 
   <g opacity="0.60">
     <circle cx="94" cy="398" r="36"/>
