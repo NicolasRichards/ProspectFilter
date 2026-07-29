@@ -42,6 +42,7 @@ struct RootView: View {
                     }
                     .pickerStyle(.segmented)
                     .frame(width: 200)
+                    .tint(showFilters ? .blue : .green)
                 }
                 if showFilters {
                     ToolbarItem(placement: .topBarLeading) { EditButton() }
