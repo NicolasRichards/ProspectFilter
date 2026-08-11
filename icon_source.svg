@@ -39,5 +39,31 @@
 <!-- FUNNEL: sideways, single combined path (body + spout) -->
 <path fill="rgba(255,255,255,0.90)" d="M 328,230 L 328,794 L 600,512 Z"/>
 
+<!-- RESULT: single generic baseball (original mark, not a league logo) -->
+<g transform="translate(802,512)">
+  <circle r="130" fill="#F5F1E6"/>
+  <circle r="130" fill="none" stroke="#173D12" stroke-width="6" opacity="0.15"/>
+  <!-- stitching arcs -->
+  <path d="M -78,-104 A 150,150 0 0 0 -78,104" fill="none" stroke="#B23A2E" stroke-width="9" stroke-linecap="round"/>
+  <path d="M 78,-104 A 150,150 0 0 1 78,104" fill="none" stroke="#B23A2E" stroke-width="9" stroke-linecap="round"/>
+  <!-- stitch ticks, left seam -->
+  <g stroke="#B23A2E" stroke-width="5" stroke-linecap="round">
+    <line x1="-88" y1="-92" x2="-64" y2="-84"/>
+    <line x1="-104" y1="-62" x2="-78" y2="-58"/>
+    <line x1="-112" y1="-28" x2="-85" y2="-28"/>
+    <line x1="-112" y1="8" x2="-85" y2="6"/>
+    <line x1="-104" y1="42" x2="-78" y2="36"/>
+    <line x1="-88" y1="72" x2="-64" y2="62"/>
+  </g>
+  <!-- stitch ticks, right seam -->
+  <g stroke="#B23A2E" stroke-width="5" stroke-linecap="round">
+    <line x1="88" y1="-92" x2="64" y2="-84"/>
+    <line x1="104" y1="-62" x2="78" y2="-58"/>
+    <line x1="112" y1="-28" x2="85" y2="-28"/>
+    <line x1="112" y1="8" x2="85" y2="6"/>
+    <line x1="104" y1="42" x2="78" y2="36"/>
+    <line x1="88" y1="72" x2="64" y2="62"/>
+  </g>
+</g>
 
 </svg>
