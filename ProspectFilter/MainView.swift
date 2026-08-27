@@ -440,7 +440,6 @@ struct MainView: View {
                 Text(r.position.isEmpty ? "—" : r.position)
                 if let age = r.age { Text("· age \(age)") }
                 Text("· \(r.matchedLevel)")
-                if !r.teamName.isEmpty { Text("· \(r.teamName)") }
             }
             .font(.caption)
             .foregroundStyle(.secondary)
