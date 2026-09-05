@@ -61,9 +61,15 @@ struct PitcherCounts {
                       earnedRuns: lhs.earnedRuns + rhs.earnedRuns)
     }
 
-    /// SP if start share ≥ threshold; RP otherwise.
-    static let startShareThreshold = 0.5
-    var isStarter: Bool { games > 0 && gamesStarted / games >= Self.startShareThreshold }
+    /// Reliever when fewer than 10 batters faced per appearance.
+    ///
+    /// This deliberately matches PDBLScore's classifier (PitcherCounts.isReliever)
+    /// so a pitcher who filters as SP here is also scored with the starter formula
+    /// there. Start share (GS/G) was the old rule and disagreed with PDBLScore on
+    /// swingmen and piggyback starters.
+    static let relieverBFPerGame = 10.0
+    var isReliever: Bool { games > 0 && bf / games < Self.relieverBFPerGame }
+    var isStarter: Bool { games > 0 && !isReliever }
 }
 
 /// One stop in a season (single team at a single level).

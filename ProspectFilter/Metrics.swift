@@ -88,10 +88,23 @@ enum Metrics {
 
     // MARK: - Formatting
 
+    /// Baseball rate formatting. Values below 1 drop the leading zero (".310"),
+    /// values at or above 1 keep the whole part ("1.050"). OPS routinely clears
+    /// 1.000, so the leading digit can never be dropped unconditionally.
+    static func rate(_ value: Double) -> String {
+        let thousandths = Int((abs(value) * 1000).rounded())
+        let sign = value < 0 ? "-" : ""
+        let whole = thousandths / 1000
+        let frac = thousandths % 1000
+        return whole == 0
+            ? String(format: "%@.%03d", sign, frac)
+            : String(format: "%@%d.%03d", sign, whole, frac)
+    }
+
     static func format(_ metric: BatterMetric, _ value: Double) -> String {
         switch metric {
         case .avg, .obp, .slg, .ops, .iso:
-            return String(format: ".%03d", Int((value * 1000).rounded()))
+            return rate(value)
         case .sb, .g:
             return String(format: "%.0f", value)
         case .sbPct, .bbPct, .kPct:
@@ -106,7 +119,7 @@ enum Metrics {
         case .era, .whip:
             return String(format: "%.2f", value)
         case .baa:
-            return String(format: ".%03d", Int((value * 1000).rounded()))
+            return rate(value)
         case .kPct, .bbPct, .kbbPct:
             return String(format: "%.1f%%", value)
         case .g, .gs:
