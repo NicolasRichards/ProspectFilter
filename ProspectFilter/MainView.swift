@@ -68,14 +68,17 @@ final class MainViewModel: ObservableObject {
                 candidates = posFiltered
             }
 
-            // 5. Evaluate each candidate against stat line + filters
+            // 5. Evaluate each candidate against stat line + filters.
+            // ageMap is a mutable local, so copy it before the task group. Sending
+            // a var into concurrent closures is a data race by the Swift 6 rules.
+            let ages = ageMap
             var matched: [MatchResult] = []
             try await withThrowingTaskGroup(of: MatchResult?.self) { group in
                 for player in candidates {
                     group.addTask {
                         await Self.evaluatePlayer(player, mode: mode, sid: sid,
                                                   filters: filters, pitcherRole: pRole,
-                                                  age: ageMap[player.personId], season: ssn)
+                                                  age: ages[player.personId], season: ssn)
                     }
                 }
                 for try await r in group { if let r { matched.append(r) } }
