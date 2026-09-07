@@ -12,19 +12,47 @@ final class MainViewModel: ObservableObject {
     @Published var searching = false
     @Published var errorMessage: String?
 
+    /// The mode the on-screen results were produced with. The list is rendered
+    /// against this rather than the live picker, so flipping Batters/Pitchers
+    /// can't reinterpret a batter list as pitchers before new results land.
+    @Published private(set) var resultsMode: PlayerMode?
+
     var lastSearchedFilters: FilterSet?
-    var lastSearchedMode: PlayerMode?
     private var debounceTask: Task<Void, Never>?
+    private var searchTask: Task<Void, Never>?
+
+    /// Bumped by every search. A search that is no longer the current one drops
+    /// its results instead of publishing them, so a slow search can't land on
+    /// top of a newer one — and can't clear `searching` out from under it.
+    private var generation = 0
 
     let season = Calendar.current.component(.year, from: Date())
 
+    /// Start a search, cancelling whatever was already in flight. The single
+    /// entry point for both the button and the debounced auto-search, so there
+    /// is only ever one live search.
+    func startSearch(filters: FilterSet, mode: PlayerMode) {
+        searchTask?.cancel()
+        // Bump here, not inside `search`: the cancelled search is superseded the
+        // moment this returns, so it can't publish in the gap before the new
+        // search's first resume.
+        generation += 1
+        let token = generation
+        searchTask = Task { [weak self] in
+            await self?.search(filters: filters, mode: mode, token: token)
+        }
+    }
+
     func scheduleAutoSearch(filters: FilterSet, mode: PlayerMode) {
-        guard lastSearchedFilters != nil, !searching else { return }
+        // Auto-search only after the user has run one search explicitly. A
+        // search already running is NOT a reason to skip: it gets cancelled and
+        // replaced below, otherwise a change made mid-search is dropped for good.
+        guard lastSearchedFilters != nil else { return }
         debounceTask?.cancel()
-        debounceTask = Task {
+        debounceTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(700))
             guard !Task.isCancelled else { return }
-            await search(filters: filters, mode: mode)
+            self?.startSearch(filters: filters, mode: mode)
         }
     }
 
@@ -34,9 +62,12 @@ final class MainViewModel: ObservableObject {
 
     // MARK: - Search
 
-    func search(filters: FilterSet, mode: PlayerMode) async {
-        searching = true; errorMessage = nil; results = nil
-        defer { searching = false }
+    private func search(filters: FilterSet, mode: PlayerMode, token mine: Int) async {
+        guard mine == generation else { return }
+        searching = true; errorMessage = nil; results = nil; resultsMode = nil
+        // Only the current search may hand the UI back: a superseded one leaves
+        // the spinner to the search that replaced it.
+        defer { if mine == generation { searching = false } }
         let sid = sportId, org = orgId, mx = maxAge, ssn = season
         let bPos = batterPos, pRole = pitcherRole
 
@@ -86,19 +117,29 @@ final class MainViewModel: ObservableObject {
 
             // 6. Resolve status flags on matched set only
             let withFlags = try await resolveStatusFlags(matched: matched, season: ssn)
-            results = withFlags.sorted { a, b in
+            let sorted = withFlags.sorted { a, b in
                 if let av = a.filterValues.first?.sortValue,
                    let bv = b.filterValues.first?.sortValue,
                    av != bv { return av > bv }
                 return a.fullName < b.fullName
             }
+            guard mine == generation else { return }   // superseded
+            results = sorted
+            resultsMode = mode
 
         } catch {
+            // A cancelled search was replaced on purpose — not something to report.
+            guard mine == generation, !Self.isCancellation(error) else { return }
             errorMessage = error.localizedDescription
             results = []
+            resultsMode = mode
         }
+        guard mine == generation else { return }
         lastSearchedFilters = filters
-        lastSearchedMode = mode
+    }
+
+    private static func isCancellation(_ error: Error) -> Bool {
+        error is CancellationError || (error as? URLError)?.code == .cancelled
     }
 
     // MARK: - Roster building
@@ -320,7 +361,7 @@ struct MainView: View {
                 // Find Players at top so it's always visible
                 Section {
                     Button {
-                        Task { await vm.search(filters: filterStore.filters, mode: mode) }
+                        vm.startSearch(filters: filterStore.filters, mode: mode)
                     } label: {
                         HStack {
                             if vm.searching { ProgressView().padding(.trailing, 4) }
@@ -377,8 +418,11 @@ struct MainView: View {
                     Section {
                         ForEach(results) { r in
                             NavigationLink {
+                                // The mode these results were built with, not the
+                                // live picker — see MainViewModel.resultsMode.
                                 PlayerDetailView(personId: r.personId, fullName: r.fullName,
-                                                 isPitcher: mode == .pitchers, season: vm.season)
+                                                 isPitcher: (vm.resultsMode ?? mode) == .pitchers,
+                                                 season: vm.season)
                             } label: {
                                 resultRow(r)
                             }
