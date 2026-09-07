@@ -48,6 +48,9 @@
             ReferencedContainer = "container:ProspectFilter.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <StoreKitConfigurationFileReference
+         identifier = "../../ProspectFilter/ProspectFilter.storekit">
+      </StoreKitConfigurationFileReference>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"

@@ -8,6 +8,7 @@ struct ProspectFilterApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(filterStore)
+                .task { await TipJar.shared.listenForTransactions() }
         }
     }
 }

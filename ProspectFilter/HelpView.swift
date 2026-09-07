@@ -35,6 +35,10 @@ struct HelpView: View {
                     HelpItem(icon: "person.crop.rectangle", title: "Player detail",
                              detail: "Tap any row to see their full stat line by level for the current season.")
                 }
+
+                Divider()
+
+                TipJarSection()
             }
             .padding()
         }
