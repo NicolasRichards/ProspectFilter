@@ -32,7 +32,7 @@ struct TipJarSection: View {
                         .font(.subheadline)
                         .foregroundStyle(.tint)
                         .padding(.vertical, 8)
-                } else if tipJar.awaitingApproval {
+                } else if !tipJar.pendingApprovals.isEmpty {
                     Text("Waiting for approval. Thank you!")
                         .font(.footnote)
                         .foregroundStyle(.secondary)

@@ -1,9 +1,10 @@
 import SwiftUI
 
-/// Runs `operation` for each item with at most `limit` running concurrently.
-/// `operation` is expected to handle its own per-item failure (return `nil`,
-/// an empty collection, or a sentinel case) — this only bounds how many run
-/// at once, so a broad search can't fire an unbounded burst of requests at
+/// Runs `operation` for each item with at most `limit` running concurrently,
+/// returning results in the same order as `items` regardless of which finishes
+/// first. `operation` is expected to handle its own per-item failure (return
+/// `nil`, an empty collection, or a sentinel case) — this only bounds how many
+/// run at once, so a broad search can't fire an unbounded burst of requests at
 /// the MLB Stats API and have most of them silently time out or get rate-limited.
 private func mapConcurrently<Item: Sendable, Result: Sendable>(
     _ items: [Item],
@@ -11,23 +12,24 @@ private func mapConcurrently<Item: Sendable, Result: Sendable>(
     operation: @escaping @Sendable (Item) async -> Result
 ) async -> [Result] {
     guard limit > 0, !items.isEmpty else { return [] }
-    var results: [Result] = []
-    results.reserveCapacity(items.count)
+    var indexed: [(Int, Result)] = []
+    indexed.reserveCapacity(items.count)
     var nextIndex = 0
-    await withTaskGroup(of: Result.self) { group in
+    await withTaskGroup(of: (Int, Result).self) { group in
         func addNext() {
             guard nextIndex < items.count else { return }
-            let item = items[nextIndex]
+            let index = nextIndex
+            let item = items[index]
             nextIndex += 1
-            group.addTask { await operation(item) }
+            group.addTask { (index, await operation(item)) }
         }
         for _ in 0..<min(limit, items.count) { addNext() }
         while let result = await group.next() {
-            results.append(result)
+            indexed.append(result)
             addNext()
         }
     }
-    return results
+    return indexed.sorted { $0.0 < $1.0 }.map(\.1)
 }
 
 @MainActor
@@ -59,7 +61,10 @@ final class MainViewModel: ObservableObject {
     /// top of a newer one — and can't clear `searching` out from under it.
     private var generation = 0
 
-    let season = Calendar.current.component(.year, from: Date())
+    /// Computed, not stored — a long-lived instance (the app is rarely force-quit)
+    /// must still pick up a new season on January 1 instead of freezing at
+    /// whatever year it happened to be constructed in.
+    var season: Int { currentSeasonYear() }
 
     /// Caps how many requests run at once for a broad search — "All
     /// organizations" + "All MiLB" can otherwise fan out to hundreds of teams
@@ -70,6 +75,10 @@ final class MainViewModel: ObservableObject {
     /// entry point for both the button and the debounced auto-search, so there
     /// is only ever one live search.
     func startSearch(filters: FilterSet, mode: PlayerMode) {
+        // Also cancels any pending debounced auto-search — otherwise a
+        // filter edit's 700ms timer can still fire after this manual search
+        // completes, re-running a stale duplicate search the user never asked for.
+        debounceTask?.cancel()
         searchTask?.cancel()
         // Bump here, not inside `search`: the cancelled search is superseded the
         // moment this returns, so it can't publish in the gap before the new
@@ -127,9 +136,12 @@ final class MainViewModel: ObservableObject {
 
             // 4. Age filter — one API call; map reused for display
             var ageMap: [Int: Int] = [:]
+            var ageFetchIncomplete = false
             let candidates: [RosterPlayer]
             if let mx {
-                ageMap = (try? await MLBClient.seasonAges(personIds: posFiltered.map(\.personId), season: ssn)) ?? [:]
+                let (ages, incomplete) = await MLBClient.seasonAges(personIds: posFiltered.map(\.personId), season: ssn)
+                ageMap = ages
+                ageFetchIncomplete = incomplete
                 candidates = posFiltered.filter { p in
                     guard let a = ageMap[p.personId] else { return false }
                     return a <= mx
@@ -148,7 +160,7 @@ final class MainViewModel: ObservableObject {
                                           age: ages[player.personId], season: ssn)
             }
             var matched: [MatchResult] = []
-            var incomplete = rosterIncomplete
+            var incomplete = rosterIncomplete || ageFetchIncomplete
             for outcome in outcomes {
                 switch outcome {
                 case .matched(let r): matched.append(r)
@@ -202,6 +214,7 @@ final class MainViewModel: ObservableObject {
     /// this runs inside a search that might already be superseded by the
     /// time it finishes, and only the caller knows whether it still is.
     private func buildRoster(orgId: Int?, sportId: Int?, season: Int) async throws -> (roster: [RosterPlayer], incomplete: Bool) {
+        var incomplete = false
         let teamList: [AffiliateTeam]
         if let orgId {
             let all = try await MLBClient.affiliateTeams(orgId: orgId, season: season)
@@ -213,20 +226,27 @@ final class MainViewModel: ObservableObject {
         } else if let sid = sportId {
             teamList = try await MLBClient.teamsAtLevel(sportId: sid, season: season)
         } else {
-            // All MiLB teams across all levels
+            // All MiLB teams across all levels. Each level's team-list fetch
+            // is independent, so one level failing must not abort the whole
+            // search — the other levels' teams are still worth searching.
             var all: [AffiliateTeam] = []
-            try await withThrowingTaskGroup(of: [AffiliateTeam].self) { group in
+            let teamLists: [[AffiliateTeam]?] = await withTaskGroup(of: (Int, [AffiliateTeam]?).self) { group in
                 for sid in milbSportIds {
-                    group.addTask { try await MLBClient.teamsAtLevel(sportId: sid, season: season) }
+                    group.addTask { (sid, try? await MLBClient.teamsAtLevel(sportId: sid, season: season)) }
                 }
-                for try await teams in group { all.append(contentsOf: teams) }
+                var bySport: [Int: [AffiliateTeam]?] = [:]
+                for await (sid, teams) in group { bySport[sid] = teams }
+                return milbSportIds.map { bySport[$0] ?? nil }
+            }
+            for maybeTeams in teamLists {
+                guard let teams = maybeTeams else { incomplete = true; continue }
+                all.append(contentsOf: teams)
             }
             teamList = all
         }
 
         var seen = Set<Int>()
         var roster: [RosterPlayer] = []
-        var incomplete = false
         let rosterLists: [[RosterPlayer]?] = await mapConcurrently(teamList, limit: Self.maxConcurrentRequests) { team in
             try? await MLBClient.rosterPlayers(team: team, season: season)
         }

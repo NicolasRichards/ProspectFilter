@@ -29,7 +29,10 @@ final class FilterStore: ObservableObject {
 
     private func save() {
         if let data = try? JSONEncoder().encode(filters) {
-            try? data.write(to: Self.fileURL)
+            // Atomic: writes to a temp file and renames over the target, so a
+            // process termination mid-write can't leave a truncated file that
+            // silently wipes every saved filter on next launch.
+            try? data.write(to: Self.fileURL, options: .atomic)
         }
     }
 }

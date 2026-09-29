@@ -43,7 +43,11 @@ enum Metrics {
         case .kPct:
             return c.pa > 0 ? (c.so / c.pa) * 100 : nil
         case .bbk:
-            return c.so > 0 ? c.bb / c.so : nil
+            // Zero strikeouts with any walks is the best possible ratio, not
+            // undefined — it must satisfy an "at least" filter, not auto-fail
+            // one. 0/0 (no walks either) is the one genuinely undefined case.
+            if c.so > 0 { return c.bb / c.so }
+            return c.bb > 0 ? Double.infinity : nil
         case .g:
             return c.gamesPlayed
         }
@@ -110,7 +114,7 @@ enum Metrics {
         case .sbPct, .bbPct, .kPct:
             return String(format: "%.1f%%", value)
         case .bbk:
-            return String(format: "%.2f", value)
+            return value.isInfinite ? "∞" : String(format: "%.2f", value)
         }
     }
 

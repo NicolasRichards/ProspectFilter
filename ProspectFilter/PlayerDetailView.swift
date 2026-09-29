@@ -79,7 +79,7 @@ struct PlayerDetailView: View {
     @StateObject private var vm = PlayerDetailViewModel()
 
     private let minYear = 2005
-    private var maxYear: Int { Calendar.current.component(.year, from: Date()) }
+    private var maxYear: Int { currentSeasonYear() }
 
     init(personId: Int, fullName: String, isPitcher: Bool, season: Int) {
         self.personId = personId
@@ -204,8 +204,12 @@ struct PlayerDetailView: View {
                 pitcherLevelCard(row.level, row.counts, filters: filters)
             }
             if levels.count > 1 {
+                let combined = levels.map(\.counts).reduce(PitcherCounts(), +)
                 let milb = levels.filter { milbSportIds.contains($0.sportId) }.map(\.counts).reduce(PitcherCounts(), +)
                 pitcherLevelCard("Combined (MiLB)", milb, filters: filters)
+                if levels.contains(where: { $0.sportId == 1 }) {
+                    pitcherLevelCard("Combined (All)", combined, filters: filters)
+                }
             }
         }
     }

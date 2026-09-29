@@ -25,7 +25,42 @@ enum MLBClient {
 
     // MARK: - Networking core
 
+    /// Caps how many requests are in flight to the MLB Stats API at once,
+    /// no matter how many call sites — nested or sibling — try to fire
+    /// concurrently. This is the actual concurrency backstop for the whole
+    /// app: every request funnels through `get`, so gating it here bounds
+    /// real network concurrency regardless of how deeply a caller's own
+    /// fan-out is nested (e.g. a per-player loop that itself triggers a
+    /// per-level fan-out).
+    private actor RequestGate {
+        private let limit: Int
+        private var active = 0
+        private var waiters: [CheckedContinuation<Void, Never>] = []
+        init(limit: Int) { self.limit = limit }
+
+        func acquire() async {
+            if active < limit {
+                active += 1
+                return
+            }
+            await withCheckedContinuation { waiters.append($0) }
+        }
+
+        func release() {
+            if waiters.isEmpty {
+                active -= 1
+            } else {
+                waiters.removeFirst().resume()
+                // A waiter takes the freed slot directly, so `active` is unchanged.
+            }
+        }
+    }
+
+    private static let gate = RequestGate(limit: 8)
+
     private static func get<T: Decodable>(_ path: String, _ query: [String: String]) async throws -> T {
+        await gate.acquire()
+        defer { Task { await gate.release() } }
         var comps = URLComponents(string: "\(base)/\(path)")!
         comps.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
         var req = URLRequest(url: comps.url!)
@@ -73,9 +108,18 @@ enum MLBClient {
         let resp: RosterResponse = try await get(
             "teams/\(team.id)/roster", ["rosterType": "fullSeason", "season": "\(season)"])
         return (resp.roster ?? []).compactMap { e -> RosterPlayer? in
+            // A roster slot with no usable person record (missing id/name)
+            // is skipped rather than failing the whole team's decode.
+            guard let personId = e.person.id, let fullName = e.person.fullName else { return nil }
+            // Every entry the API returns is part of this team's full-season
+            // roster in some capacity — don't second-guess that by excluding
+            // anyone whose status isn't literally "Active"/"Injured"; a
+            // routine short-lived status (Paternity List, Bereavement List,
+            // Restricted List, etc.) shouldn't make a qualifying player
+            // silently vanish from search. Only "Injured"-containing
+            // statuses get the IL badge.
             let s = e.status?.description ?? "Active"
             let onIL = s.contains("Injured")
-            guard s == "Active" || onIL else { return nil }
             // A two-way player (position abbreviation "TWP") pitches and
             // bats — searchable from either mode, not just one.
             let posType = e.position?.type
@@ -83,7 +127,7 @@ enum MLBClient {
             let isTwoWay = posAbbrev == "TWP"
             let isPurePitcher = posType == "Pitcher" || posAbbrev == "P"
             return RosterPlayer(
-                personId: e.person.id, fullName: e.person.fullName,
+                personId: personId, fullName: fullName,
                 position: posAbbrev ?? "",
                 isPitcher: isTwoWay || isPurePitcher,
                 isBatter: isTwoWay || !isPurePitcher,
@@ -97,38 +141,60 @@ enum MLBClient {
             "teams/\(teamId)/roster", ["rosterType": "fullSeason", "season": "\(season)"])
         var out: [Int: Bool] = [:]
         for e in resp.roster ?? [] {
+            guard let personId = e.person.id else { continue }
             let s = e.status?.description ?? "Active"
-            out[e.person.id] = s.contains("Injured")
+            out[personId] = s.contains("Injured")
         }
         return out
     }
 
     // MARK: - Ages (season age as of July 1 of the season year)
 
-    static func seasonAges(personIds: [Int], season: Int) async throws -> [Int: Int] {
+    /// Returns the known ages plus whether any chunk failed to load — a
+    /// failure must not be indistinguishable from "this player has no
+    /// birth date," since the caller uses a missing age to exclude a
+    /// candidate from a Max Age search.
+    static func seasonAges(personIds: [Int], season: Int) async -> (ages: [Int: Int], incomplete: Bool) {
         var out: [Int: Int] = [:]
+        var incomplete = false
         for start in stride(from: 0, to: personIds.count, by: 100) {
             let chunk = Array(personIds[start..<min(start + 100, personIds.count)])
-            let resp: PeopleBirthResponse = try await get(
-                "people", ["personIds": chunk.map(String.init).joined(separator: ",")])
+            guard let resp: PeopleBirthResponse = try? await get(
+                "people", ["personIds": chunk.map(String.init).joined(separator: ",")]) else {
+                incomplete = true
+                continue
+            }
             for p in resp.people {
                 if let bd = p.birthDate, let age = seasonAge(birthDate: bd, season: season) {
                     out[p.id] = age
                 }
             }
         }
-        return out
+        return (out, incomplete)
+    }
+
+    /// MLB seasons and birth dates are always Gregorian, regardless of the
+    /// device's Region/Calendar setting — an explicit calendar here matches
+    /// the en_US_POSIX locale already used for the birth-date parse below,
+    /// rather than letting a non-Gregorian system calendar (Buddhist,
+    /// Japanese, Hebrew, ...) skew the cutoff date and every computed age.
+    private static var gregorianUTC: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC") ?? .current
+        return calendar
     }
 
     private static func seasonAge(birthDate: String, season: Int) -> Int? {
         let df = DateFormatter()
         df.dateFormat = "yyyy-MM-dd"
         df.locale = Locale(identifier: "en_US_POSIX")
+        df.calendar = gregorianUTC
+        df.timeZone = gregorianUTC.timeZone
         guard let dob = df.date(from: birthDate) else { return nil }
         var comps = DateComponents()
         comps.year = season; comps.month = 7; comps.day = 1
-        guard let july1 = Calendar.current.date(from: comps) else { return nil }
-        return Calendar.current.dateComponents([.year], from: dob, to: july1).year
+        guard let july1 = gregorianUTC.date(from: comps) else { return nil }
+        return gregorianUTC.dateComponents([.year], from: dob, to: july1).year
     }
 
     // MARK: - Current team info (for status flags)
@@ -157,16 +223,19 @@ enum MLBClient {
 
     static func batterLines(personId: Int, season: Int) async throws -> (BatterCounts, [Stint]) {
         var bySport: [Int: [HitSplit]] = [:]
-        try await withThrowingTaskGroup(of: (Int, [HitSplit]).self) { group in
+        // Each level's fetch is independent, so a transient failure at one
+        // level (e.g. a level this player never played at) must not discard
+        // the other levels' already-fetched, successful data.
+        await withTaskGroup(of: (Int, [HitSplit]).self) { group in
             for sid in allSportIds {
                 group.addTask {
-                    let resp: HitStatsResponse = try await get(
+                    let resp: HitStatsResponse? = try? await get(
                         "people/\(personId)/stats",
                         ["stats": "season", "group": "hitting", "season": "\(season)", "sportId": "\(sid)"])
-                    return (sid, resp.stats.flatMap { $0.splits })
+                    return (sid, resp?.stats.flatMap { $0.splits } ?? [])
                 }
             }
-            for try await (sid, splits) in group { bySport[sid] = splits }
+            for await (sid, splits) in group { bySport[sid] = splits }
         }
         var agg = BatterCounts()
         var stints: [Stint] = []
@@ -184,16 +253,18 @@ enum MLBClient {
 
     static func pitcherLines(personId: Int, season: Int) async throws -> (PitcherCounts, [Stint]) {
         var bySport: [Int: [PitchSplit]] = [:]
-        try await withThrowingTaskGroup(of: (Int, [PitchSplit]).self) { group in
+        // Same reasoning as batterLines: don't let one level's failure
+        // discard every other level's already-fetched data.
+        await withTaskGroup(of: (Int, [PitchSplit]).self) { group in
             for sid in allSportIds {
                 group.addTask {
-                    let resp: PitchStatsResponse = try await get(
+                    let resp: PitchStatsResponse? = try? await get(
                         "people/\(personId)/stats",
                         ["stats": "season", "group": "pitching", "season": "\(season)", "sportId": "\(sid)"])
-                    return (sid, resp.stats.flatMap { $0.splits })
+                    return (sid, resp?.stats.flatMap { $0.splits } ?? [])
                 }
             }
-            for try await (sid, splits) in group { bySport[sid] = splits }
+            for await (sid, splits) in group { bySport[sid] = splits }
         }
         var agg = PitcherCounts()
         var stints: [Stint] = []
@@ -241,7 +312,10 @@ private struct NamedRef: Decodable { let id: Int?; let name: String? }
 private struct RosterResponse: Decodable { let roster: [RosterEntry]? }
 private struct RosterEntry: Decodable { let person: PersonRef; let position: Position?; let status: RosterStatus? }
 private struct RosterStatus: Decodable { let description: String? }
-private struct PersonRef: Decodable { let id: Int; let fullName: String }
+// Optional, unlike most id/name fields, so one roster slot with a missing
+// person record (a data gap, a placeholder entry) doesn't throw out the
+// whole team's roster — rosterPlayers/teamILStatus skip just that entry.
+private struct PersonRef: Decodable { let id: Int?; let fullName: String? }
 private struct Position: Decodable { let abbreviation: String?; let type: String? }
 
 private struct PeopleBirthResponse: Decodable { let people: [PersonBirth] }

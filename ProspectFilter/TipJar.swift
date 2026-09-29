@@ -24,8 +24,12 @@ final class TipJar {
     private(set) var isLoading = false
     private(set) var purchasing: Product.ID?
     private(set) var didTip = false
-    /// A purchase came back `.pending` (Ask to Buy) and is waiting on approval.
-    private(set) var awaitingApproval = false
+    /// Products with a purchase that came back `.pending` (Ask to Buy) and is
+    /// waiting on approval. Tracked per-product, not a single flag — the
+    /// purchase button re-enables as soon as `.pending` is returned (see
+    /// `purchasing`'s `defer` below), so a user can start a second tip while
+    /// the first is still awaiting approval, and each needs its own state.
+    private(set) var pendingApprovals: Set<Product.ID> = []
     var loadFailed = false
 
     func load() async {
@@ -52,10 +56,13 @@ final class TipJar {
             // Finish unverified transactions too: a tip unlocks nothing, and an
             // unfinished transaction is redelivered on every launch.
             await update.unsafePayloadValue.finish()
-            // Only thank someone waiting on an Ask to Buy approval. Anything else
-            // here is a leftover StoreKit redelivered at launch, not a new tip.
-            if case .verified = update, awaitingApproval {
-                awaitingApproval = false
+            // Only thank someone waiting on an Ask to Buy approval for THIS
+            // product. Matching by productID (not just "any pending exists")
+            // means a second tip that's still pending isn't mistakenly
+            // cleared/thanked by the first one's approval. Anything whose
+            // product isn't in pendingApprovals is a leftover transaction
+            // redelivered at launch, not a new tip.
+            if case .verified(let transaction) = update, pendingApprovals.remove(transaction.productID) != nil {
                 didTip = true
             }
         }
@@ -74,7 +81,7 @@ final class TipJar {
                     didTip = true
                 }
             case .pending:
-                awaitingApproval = true
+                pendingApprovals.insert(product.id)
             case .userCancelled:
                 break
             @unknown default:

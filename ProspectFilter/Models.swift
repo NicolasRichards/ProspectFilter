@@ -1,5 +1,16 @@
 import Foundation
 
+/// The current calendar year via an explicit Gregorian/UTC calendar, so a
+/// device set to a non-Gregorian Region/Calendar (Buddhist, Japanese,
+/// Hebrew, ...) can't turn "this season" into a nonsensical year — every
+/// season/date computation in this app is against the MLB's Gregorian
+/// calendar, not whatever the device happens to display.
+func currentSeasonYear() -> Int {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "UTC") ?? .current
+    return calendar.component(.year, from: Date())
+}
+
 enum PlayerMode: String, CaseIterable, Identifiable {
     case batters = "Batters"
     case pitchers = "Pitchers"
