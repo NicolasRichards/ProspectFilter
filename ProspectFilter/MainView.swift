@@ -56,10 +56,10 @@ final class MainViewModel: ObservableObject {
     private var debounceTask: Task<Void, Never>?
     private var searchTask: Task<Void, Never>?
 
-    /// Bumped by every search. A search that is no longer the current one drops
-    /// its results instead of publishing them, so a slow search can't land on
-    /// top of a newer one — and can't clear `searching` out from under it.
-    private var generation = 0
+    /// A search that is no longer the current one drops its results instead
+    /// of publishing them, so a slow search can't land on top of a newer one
+    /// — and can't clear `searching` out from under it.
+    private var generation = TaskGeneration()
 
     /// Computed, not stored — a long-lived instance (the app is rarely force-quit)
     /// must still pick up a new season on January 1 instead of freezing at
@@ -83,8 +83,7 @@ final class MainViewModel: ObservableObject {
         // Bump here, not inside `search`: the cancelled search is superseded the
         // moment this returns, so it can't publish in the gap before the new
         // search's first resume.
-        generation += 1
-        let token = generation
+        let token = generation.next()
         searchTask = Task { [weak self] in
             await self?.search(filters: filters, mode: mode, token: token)
         }
@@ -110,11 +109,11 @@ final class MainViewModel: ObservableObject {
     // MARK: - Search
 
     private func search(filters: FilterSet, mode: PlayerMode, token mine: Int) async {
-        guard mine == generation else { return }
+        guard generation.isCurrent(mine) else { return }
         searching = true; errorMessage = nil; results = nil; resultsMode = nil; resultsIncomplete = false
         // Only the current search may hand the UI back: a superseded one leaves
         // the spinner to the search that replaced it.
-        defer { if mine == generation { searching = false } }
+        defer { if generation.isCurrent(mine) { searching = false } }
         let sid = sportId, org = orgId, mx = maxAge, ssn = season
         let bPos = batterPos, pRole = pitcherRole
 
@@ -187,19 +186,19 @@ final class MainViewModel: ObservableObject {
                 }
                 return a.fullName < b.fullName
             }
-            guard mine == generation else { return }   // superseded
+            guard generation.isCurrent(mine) else { return }   // superseded
             results = sorted
             resultsMode = mode
             resultsIncomplete = incomplete
 
         } catch {
             // A cancelled search was replaced on purpose — not something to report.
-            guard mine == generation, !Self.isCancellation(error) else { return }
+            guard generation.isCurrent(mine), !Self.isCancellation(error) else { return }
             errorMessage = MLBClient.friendlyMessage(for: error)
             results = []
             resultsMode = mode
         }
-        guard mine == generation else { return }
+        guard generation.isCurrent(mine) else { return }
         lastSearchedFilters = filters
     }
 

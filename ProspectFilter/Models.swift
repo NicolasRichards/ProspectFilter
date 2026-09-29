@@ -1,5 +1,24 @@
 import Foundation
 
+/// Discards stale async work without relying on `Task.isCancelled` (a
+/// caller may not cancel the underlying Task at all — see `PlayerDetailView`'s
+/// `.task(id:)`, which starts a fresh task rather than cancelling explicitly).
+/// Call `next()` synchronously when starting new work to get a token, do the
+/// `await` work, then check `isCurrent(token)` before publishing any of its
+/// results — a call whose token is no longer current was superseded by a
+/// later one and must not act, even if it finished successfully.
+///
+/// Shared by MainViewModel and PlayerDetailViewModel rather than each
+/// hand-rolling its own `generation`/`mine` counter.
+struct TaskGeneration {
+    private var value = 0
+    mutating func next() -> Int {
+        value += 1
+        return value
+    }
+    func isCurrent(_ token: Int) -> Bool { token == value }
+}
+
 /// The current calendar year via an explicit Gregorian/UTC calendar, so a
 /// device set to a non-Gregorian Region/Calendar (Buddhist, Japanese,
 /// Hebrew, ...) can't turn "this season" into a nonsensical year — every
