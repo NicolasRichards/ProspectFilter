@@ -33,7 +33,7 @@ final class PlayerDetailViewModel: ObservableObject {
             }
         } catch {
             guard mine == generation else { return }   // superseded
-            if !Task.isCancelled { errorMessage = error.localizedDescription }
+            if !Task.isCancelled { errorMessage = MLBClient.friendlyMessage(for: error) }
         }
         guard mine == generation else { return }   // superseded
         loading = false
@@ -181,7 +181,7 @@ struct PlayerDetailView: View {
             }
             if !filters.isEmpty {
                 filterResults(filters.map { f in
-                    (label: "\(f.metric.rawValue) \(f.comparator.rawValue) \(Metrics.format(f.metric, f.value))",
+                    (id: f.id, label: "\(f.metric.rawValue) \(f.comparator.rawValue) \(Metrics.format(f.metric, f.value))",
                      passes: Metrics.passes(f, counts: c))
                 })
             }
@@ -239,7 +239,7 @@ struct PlayerDetailView: View {
             }
             if !filters.isEmpty {
                 filterResults(filters.map { f in
-                    (label: "\(f.metric.rawValue) \(f.comparator.rawValue) \(Metrics.format(f.metric, f.value))",
+                    (id: f.id, label: "\(f.metric.rawValue) \(f.comparator.rawValue) \(Metrics.format(f.metric, f.value))",
                      passes: Metrics.passes(f, counts: c))
                 })
             }
@@ -257,11 +257,11 @@ struct PlayerDetailView: View {
         }
     }
 
-    private func filterResults(_ results: [(label: String, passes: Bool)]) -> some View {
+    private func filterResults(_ results: [(id: UUID, label: String, passes: Bool)]) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Divider()
             Text("Active filters").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-            ForEach(results, id: \.label) { r in
+            ForEach(results, id: \.id) { r in
                 HStack(spacing: 6) {
                     Image(systemName: r.passes ? "checkmark.circle.fill" : "xmark.circle.fill")
                         .foregroundStyle(r.passes ? .green : .red)

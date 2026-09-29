@@ -26,6 +26,9 @@ struct RosterPlayer: Identifiable {
     let fullName: String
     let position: String       // abbreviation e.g. "SS", "P"
     let isPitcher: Bool
+    /// True for anyone with a batting line worth searching — every non-pitcher
+    /// position, plus two-way players (who are also `isPitcher`).
+    let isBatter: Bool
     let teamName: String
     let teamId: Int
     let sportId: Int

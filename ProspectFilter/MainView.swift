@@ -113,9 +113,10 @@ final class MainViewModel: ObservableObject {
             // 1. Collect candidate roster players
             let (roster, rosterIncomplete) = try await buildRoster(orgId: org, sportId: sid, season: ssn)
 
-            // 2. Mode filter
+            // 2. Mode filter. `isBatter`/`isPitcher` aren't opposites — a
+            // two-way player is both, and should turn up in either search.
             let modeFiltered = roster.filter { p in
-                mode == .batters ? !p.isPitcher : p.isPitcher
+                mode == .batters ? p.isBatter : p.isPitcher
             }
 
             // 3. Position filter
@@ -182,7 +183,7 @@ final class MainViewModel: ObservableObject {
         } catch {
             // A cancelled search was replaced on purpose — not something to report.
             guard mine == generation, !Self.isCancellation(error) else { return }
-            errorMessage = error.localizedDescription
+            errorMessage = MLBClient.friendlyMessage(for: error)
             results = []
             resultsMode = mode
         }

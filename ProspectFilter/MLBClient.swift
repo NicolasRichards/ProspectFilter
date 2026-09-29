@@ -10,6 +10,19 @@ enum MLBClient {
         var errorDescription: String? { "The MLB data service returned an unexpected response." }
     }
 
+    /// A message safe to show a user — raw `DecodingError`/`URLError` text
+    /// (e.g. "The data couldn't be read because it is missing.") stays out
+    /// of the UI; only our own already-friendly `ClientError` passes through.
+    static func friendlyMessage(for error: Error) -> String {
+        if let clientError = error as? ClientError {
+            return clientError.errorDescription ?? "Something went wrong."
+        }
+        if error is URLError {
+            return "Couldn't reach the MLB data service. Check your connection and try again."
+        }
+        return "Couldn't load data right now. Please try again."
+    }
+
     // MARK: - Networking core
 
     private static func get<T: Decodable>(_ path: String, _ query: [String: String]) async throws -> T {
@@ -63,10 +76,17 @@ enum MLBClient {
             let s = e.status?.description ?? "Active"
             let onIL = s.contains("Injured")
             guard s == "Active" || onIL else { return nil }
+            // A two-way player (position abbreviation "TWP") pitches and
+            // bats — searchable from either mode, not just one.
+            let posType = e.position?.type
+            let posAbbrev = e.position?.abbreviation
+            let isTwoWay = posAbbrev == "TWP"
+            let isPurePitcher = posType == "Pitcher" || posAbbrev == "P"
             return RosterPlayer(
                 personId: e.person.id, fullName: e.person.fullName,
-                position: e.position?.abbreviation ?? "",
-                isPitcher: e.position?.type == "Pitcher" || e.position?.abbreviation == "P",
+                position: posAbbrev ?? "",
+                isPitcher: isTwoWay || isPurePitcher,
+                isBatter: isTwoWay || !isPurePitcher,
                 teamName: team.name, teamId: team.id, sportId: team.sportId, onIL: onIL)
         }
     }
