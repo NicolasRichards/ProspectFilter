@@ -160,10 +160,18 @@ final class MainViewModel: ObservableObject {
             // timeout on the extra IL/promotion lookup) must not discard results
             // that steps 1-5 already found and filtered correctly.
             let withFlags = (try? await resolveStatusFlags(matched: matched, season: ssn)) ?? matched
+            // ≥ metrics (OBP, SB...) are better higher, so sort descending. ≤
+            // metrics (ERA, K%...) are better lower — sorting descending for
+            // those would put the worst still-qualifying value first.
+            let firstComparator = mode == .batters
+                ? filters.batterFilters.first?.comparator
+                : filters.pitcherFilters.first?.comparator
             let sorted = withFlags.sorted { a, b in
                 if let av = a.filterValues.first?.sortValue,
                    let bv = b.filterValues.first?.sortValue,
-                   av != bv { return av > bv }
+                   av != bv {
+                    return firstComparator == .atMost ? av < bv : av > bv
+                }
                 return a.fullName < b.fullName
             }
             guard mine == generation else { return }   // superseded

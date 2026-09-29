@@ -7,20 +7,36 @@ final class PlayerDetailViewModel: ObservableObject {
     @Published var loading = true
     @Published var errorMessage: String?
 
+    /// Bumped by every load. `.task(id: season)` cancels the previous load
+    /// when the user changes years, but cancellation doesn't stop it from
+    /// finishing first — its cancelled network call typically fails faster
+    /// than the new one succeeds. Without this, the old load's `defer` could
+    /// flip `loading` back to false (and its catch could still run) while the
+    /// new season's fetch is still in flight, briefly showing the previous
+    /// season's stats under the newly-selected year. Mirrors the same
+    /// `generation` pattern in MainViewModel.search().
+    private var generation = 0
+
     func load(personId: Int, season: Int, isPitcher: Bool) async {
+        generation += 1
+        let mine = generation
         loading = true; errorMessage = nil
-        defer { loading = false }
         do {
             if isPitcher {
                 let (_, stints) = try await MLBClient.pitcherLines(personId: personId, season: season)
+                guard mine == generation else { return }   // superseded
                 pitcherStints = stints.filter { ($0.pitcher?.bf ?? 0) > 0 }
             } else {
                 let (_, stints) = try await MLBClient.batterLines(personId: personId, season: season)
+                guard mine == generation else { return }   // superseded
                 batterStints = stints.filter { ($0.batter?.pa ?? 0) > 0 }
             }
         } catch {
+            guard mine == generation else { return }   // superseded
             if !Task.isCancelled { errorMessage = error.localizedDescription }
         }
+        guard mine == generation else { return }   // superseded
+        loading = false
     }
 
     /// Stints aggregated by level (handles multiple stints at the same level).
