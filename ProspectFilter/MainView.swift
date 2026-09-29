@@ -1,5 +1,35 @@
 import SwiftUI
 
+/// Runs `operation` for each item with at most `limit` running concurrently.
+/// `operation` is expected to handle its own per-item failure (return `nil`,
+/// an empty collection, or a sentinel case) — this only bounds how many run
+/// at once, so a broad search can't fire an unbounded burst of requests at
+/// the MLB Stats API and have most of them silently time out or get rate-limited.
+private func mapConcurrently<Item: Sendable, Result: Sendable>(
+    _ items: [Item],
+    limit: Int,
+    operation: @escaping @Sendable (Item) async -> Result
+) async -> [Result] {
+    guard limit > 0, !items.isEmpty else { return [] }
+    var results: [Result] = []
+    results.reserveCapacity(items.count)
+    var nextIndex = 0
+    await withTaskGroup(of: Result.self) { group in
+        func addNext() {
+            guard nextIndex < items.count else { return }
+            let item = items[nextIndex]
+            nextIndex += 1
+            group.addTask { await operation(item) }
+        }
+        for _ in 0..<min(limit, items.count) { addNext() }
+        while let result = await group.next() {
+            results.append(result)
+            addNext()
+        }
+    }
+    return results
+}
+
 @MainActor
 final class MainViewModel: ObservableObject {
     @Published var orgs: [Org] = []
@@ -11,6 +41,9 @@ final class MainViewModel: ObservableObject {
     @Published var results: [MatchResult]? = nil
     @Published var searching = false
     @Published var errorMessage: String?
+    /// Set when a team roster fetch or player evaluation failed and was
+    /// skipped rather than silently making the result count look complete.
+    @Published var resultsIncomplete = false
 
     /// The mode the on-screen results were produced with. The list is rendered
     /// against this rather than the live picker, so flipping Batters/Pitchers
@@ -27,6 +60,11 @@ final class MainViewModel: ObservableObject {
     private var generation = 0
 
     let season = Calendar.current.component(.year, from: Date())
+
+    /// Caps how many requests run at once for a broad search — "All
+    /// organizations" + "All MiLB" can otherwise fan out to hundreds of teams
+    /// and, per candidate player, several more requests each, all at once.
+    private static let maxConcurrentRequests = 8
 
     /// Start a search, cancelling whatever was already in flight. The single
     /// entry point for both the button and the debounced auto-search, so there
@@ -64,7 +102,7 @@ final class MainViewModel: ObservableObject {
 
     private func search(filters: FilterSet, mode: PlayerMode, token mine: Int) async {
         guard mine == generation else { return }
-        searching = true; errorMessage = nil; results = nil; resultsMode = nil
+        searching = true; errorMessage = nil; results = nil; resultsMode = nil; resultsIncomplete = false
         // Only the current search may hand the UI back: a superseded one leaves
         // the spinner to the search that replaced it.
         defer { if mine == generation { searching = false } }
@@ -73,7 +111,7 @@ final class MainViewModel: ObservableObject {
 
         do {
             // 1. Collect candidate roster players
-            let roster = try await buildRoster(orgId: org, sportId: sid, season: ssn)
+            let (roster, rosterIncomplete) = try await buildRoster(orgId: org, sportId: sid, season: ssn)
 
             // 2. Mode filter
             let modeFiltered = roster.filter { p in
@@ -103,20 +141,25 @@ final class MainViewModel: ObservableObject {
             // ageMap is a mutable local, so copy it before the task group. Sending
             // a var into concurrent closures is a data race by the Swift 6 rules.
             let ages = ageMap
+            let outcomes = await mapConcurrently(candidates, limit: Self.maxConcurrentRequests) { player in
+                await Self.evaluatePlayer(player, mode: mode, sid: sid,
+                                          filters: filters, pitcherRole: pRole,
+                                          age: ages[player.personId], season: ssn)
+            }
             var matched: [MatchResult] = []
-            try await withThrowingTaskGroup(of: MatchResult?.self) { group in
-                for player in candidates {
-                    group.addTask {
-                        await Self.evaluatePlayer(player, mode: mode, sid: sid,
-                                                  filters: filters, pitcherRole: pRole,
-                                                  age: ages[player.personId], season: ssn)
-                    }
+            var incomplete = rosterIncomplete
+            for outcome in outcomes {
+                switch outcome {
+                case .matched(let r): matched.append(r)
+                case .notMatched: break
+                case .failed: incomplete = true
                 }
-                for try await r in group { if let r { matched.append(r) } }
             }
 
-            // 6. Resolve status flags on matched set only
-            let withFlags = try await resolveStatusFlags(matched: matched, season: ssn)
+            // 6. Resolve status flags on matched set only. A failure here (e.g. a
+            // timeout on the extra IL/promotion lookup) must not discard results
+            // that steps 1-5 already found and filtered correctly.
+            let withFlags = (try? await resolveStatusFlags(matched: matched, season: ssn)) ?? matched
             let sorted = withFlags.sorted { a, b in
                 if let av = a.filterValues.first?.sortValue,
                    let bv = b.filterValues.first?.sortValue,
@@ -126,6 +169,7 @@ final class MainViewModel: ObservableObject {
             guard mine == generation else { return }   // superseded
             results = sorted
             resultsMode = mode
+            resultsIncomplete = incomplete
 
         } catch {
             // A cancelled search was replaced on purpose — not something to report.
@@ -144,7 +188,11 @@ final class MainViewModel: ObservableObject {
 
     // MARK: - Roster building
 
-    private func buildRoster(orgId: Int?, sportId: Int?, season: Int) async throws -> [RosterPlayer] {
+    /// Returns the candidate roster plus whether any team's roster fetch
+    /// failed. Reported back to the caller rather than published directly —
+    /// this runs inside a search that might already be superseded by the
+    /// time it finishes, and only the caller knows whether it still is.
+    private func buildRoster(orgId: Int?, sportId: Int?, season: Int) async throws -> (roster: [RosterPlayer], incomplete: Bool) {
         let teamList: [AffiliateTeam]
         if let orgId {
             let all = try await MLBClient.affiliateTeams(orgId: orgId, season: season)
@@ -169,20 +217,28 @@ final class MainViewModel: ObservableObject {
 
         var seen = Set<Int>()
         var roster: [RosterPlayer] = []
-        try await withThrowingTaskGroup(of: [RosterPlayer].self) { group in
-            for team in teamList {
-                group.addTask { (try? await MLBClient.rosterPlayers(team: team, season: season)) ?? [] }
-            }
-            for try await players in group {
-                for p in players where seen.insert(p.personId).inserted {
-                    roster.append(p)
-                }
+        var incomplete = false
+        let rosterLists: [[RosterPlayer]?] = await mapConcurrently(teamList, limit: Self.maxConcurrentRequests) { team in
+            try? await MLBClient.rosterPlayers(team: team, season: season)
+        }
+        for maybePlayers in rosterLists {
+            guard let players = maybePlayers else { incomplete = true; continue }
+            for p in players where seen.insert(p.personId).inserted {
+                roster.append(p)
             }
         }
-        return roster
+        return (roster, incomplete)
     }
 
     // MARK: - Per-player evaluation
+
+    /// Distinguishes "doesn't qualify" from "couldn't be evaluated" so a
+    /// network failure can't be silently counted as a normal non-match.
+    enum EvaluationOutcome: Sendable {
+        case matched(MatchResult)
+        case notMatched
+        case failed
+    }
 
     nonisolated static func evaluatePlayer(
         _ player: RosterPlayer,
@@ -192,7 +248,7 @@ final class MainViewModel: ObservableObject {
         pitcherRole: PitcherRole,
         age: Int?,
         season: Int
-    ) async -> MatchResult? {
+    ) async -> EvaluationOutcome {
         do {
             if mode == .batters {
                 let counts: BatterCounts?
@@ -206,7 +262,7 @@ final class MainViewModel: ObservableObject {
                 } else {
                     let (_, stints) = try await MLBClient.batterLines(personId: player.personId, season: season)
                     let milbStints = stints.filter { milbSportIds.contains($0.sportId) }
-                    guard !milbStints.isEmpty else { return nil }
+                    guard !milbStints.isEmpty else { return .notMatched }
                     let milbCounts = milbStints.compactMap { $0.batter }.reduce(BatterCounts(), +)
                     counts = milbCounts.pa > 0 ? milbCounts : nil
                     matchedLevel = "Combined"
@@ -216,18 +272,18 @@ final class MainViewModel: ObservableObject {
                         .min(by: { levelOrder(sportId: $0) < levelOrder(sportId: $1) })
                 }
 
-                guard let c = counts, c.pa >= filters.minPA else { return nil }
-                guard filters.batterFilters.allSatisfy({ Metrics.passes($0, counts: c) }) else { return nil }
+                guard let c = counts, c.pa >= filters.minPA else { return .notMatched }
+                guard filters.batterFilters.allSatisfy({ Metrics.passes($0, counts: c) }) else { return .notMatched }
 
                 let filterValues = filters.batterFilters.map { f -> FilterValue in
                     let v = Metrics.compute(f.metric, from: c) ?? 0
                     return FilterValue(label: f.metric.rawValue, formatted: Metrics.format(f.metric, v), sortValue: v)
                 }
-                return MatchResult(
+                return .matched(MatchResult(
                     personId: player.personId, fullName: player.fullName,
                     position: player.position, teamName: player.teamName,
                     matchedLevel: matchedLevel, referenceSportId: referenceSportId,
-                    age: age, onIL: player.onIL, levelChangeNote: nil, filterValues: filterValues)
+                    age: age, onIL: player.onIL, levelChangeNote: nil, filterValues: filterValues))
 
             } else {
                 // Pitchers
@@ -242,7 +298,7 @@ final class MainViewModel: ObservableObject {
                 } else {
                     let (_, stints) = try await MLBClient.pitcherLines(personId: player.personId, season: season)
                     let milbStints = stints.filter { milbSportIds.contains($0.sportId) }
-                    guard !milbStints.isEmpty else { return nil }
+                    guard !milbStints.isEmpty else { return .notMatched }
                     let milbCounts = milbStints.compactMap { $0.pitcher }.reduce(PitcherCounts(), +)
                     counts = milbCounts.bf > 0 ? milbCounts : nil
                     matchedLevel = "Combined"
@@ -251,31 +307,31 @@ final class MainViewModel: ObservableObject {
                         .min(by: { levelOrder(sportId: $0) < levelOrder(sportId: $1) })
                 }
 
-                guard let c = counts else { return nil }
+                guard let c = counts else { return .notMatched }
                 let ip = Metrics.outsToIP(c.outs)
-                guard ip >= filters.minIP else { return nil }
+                guard ip >= filters.minIP else { return .notMatched }
 
                 // SP/RP filter
                 switch pitcherRole {
-                case .sp where !c.isStarter: return nil
-                case .rp where c.isStarter: return nil
+                case .sp where !c.isStarter: return .notMatched
+                case .rp where c.isStarter: return .notMatched
                 default: break
                 }
 
-                guard filters.pitcherFilters.allSatisfy({ Metrics.passes($0, counts: c) }) else { return nil }
+                guard filters.pitcherFilters.allSatisfy({ Metrics.passes($0, counts: c) }) else { return .notMatched }
 
                 let filterValues = filters.pitcherFilters.map { f -> FilterValue in
                     let v = Metrics.compute(f.metric, from: c) ?? 0
                     return FilterValue(label: f.metric.rawValue, formatted: Metrics.format(f.metric, v), sortValue: v)
                 }
-                return MatchResult(
+                return .matched(MatchResult(
                     personId: player.personId, fullName: player.fullName,
                     position: player.position, teamName: player.teamName,
                     matchedLevel: matchedLevel, referenceSportId: referenceSportId,
-                    age: age, onIL: player.onIL, levelChangeNote: nil, filterValues: filterValues)
+                    age: age, onIL: player.onIL, levelChangeNote: nil, filterValues: filterValues))
             }
         } catch {
-            return nil
+            return .failed
         }
     }
 
@@ -434,6 +490,11 @@ struct MainView: View {
                                 : "\(results.count) player\(results.count == 1 ? "" : "s")",
                             color: .green
                         )
+                    } footer: {
+                        if vm.resultsIncomplete {
+                            Text("Some teams or players couldn't be checked due to a network issue — this list may be incomplete. Try searching again.")
+                                .foregroundStyle(.orange)
+                        }
                     }
                 }
             }
