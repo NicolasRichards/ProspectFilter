@@ -277,87 +277,107 @@ final class MainViewModel: ObservableObject {
         age: Int?,
         season: Int
     ) async -> EvaluationOutcome {
+        if mode == .batters {
+            return await evaluate(
+                player: player, sid: sid, season: season, age: age,
+                countsAtLevel: { personId, season, sid in
+                    try await MLBClient.batterCountsAtLevel(personId: personId, season: season, sportId: sid)
+                },
+                combinedStints: { personId, season in
+                    try await MLBClient.batterLines(personId: personId, season: season).1
+                },
+                stintCounts: { $0.batter },
+                zero: BatterCounts(),
+                add: { $0 + $1 },
+                hasActivity: { $0.pa > 0 },
+                qualifies: { $0.pa >= filters.minPA },
+                filters: filters.batterFilters,
+                passes: { f, c in Metrics.passes(f, counts: c) },
+                filterValue: { f, c in
+                    let v = Metrics.compute(f.metric, from: c) ?? 0
+                    return FilterValue(label: f.metric.rawValue, formatted: Metrics.format(f.metric, v), sortValue: v)
+                })
+        } else {
+            return await evaluate(
+                player: player, sid: sid, season: season, age: age,
+                countsAtLevel: { personId, season, sid in
+                    try await MLBClient.pitcherCountsAtLevel(personId: personId, season: season, sportId: sid)
+                },
+                combinedStints: { personId, season in
+                    try await MLBClient.pitcherLines(personId: personId, season: season).1
+                },
+                stintCounts: { $0.pitcher },
+                zero: PitcherCounts(),
+                add: { $0 + $1 },
+                hasActivity: { $0.bf > 0 },
+                qualifies: { c in
+                    guard Metrics.outsToIP(c.outs) >= filters.minIP else { return false }
+                    switch pitcherRole {
+                    case .sp: return c.isStarter
+                    case .rp: return !c.isStarter
+                    case .all: return true
+                    }
+                },
+                filters: filters.pitcherFilters,
+                passes: { f, c in Metrics.passes(f, counts: c) },
+                filterValue: { f, c in
+                    let v = Metrics.compute(f.metric, from: c) ?? 0
+                    return FilterValue(label: f.metric.rawValue, formatted: Metrics.format(f.metric, v), sortValue: v)
+                })
+        }
+    }
+
+    /// Shared fetch → qualify → filter → build-result shape for both modes.
+    /// BatterCounts/PitcherCounts and BatterFilter/PitcherFilter don't share
+    /// a protocol, so each mode supplies its own behavior via closures rather
+    /// than this needing new conformances bolted onto those types.
+    private nonisolated static func evaluate<Counts: Sendable, Filter: Sendable>(
+        player: RosterPlayer,
+        sid: Int?,
+        season: Int,
+        age: Int?,
+        countsAtLevel: @Sendable (Int, Int, Int) async throws -> Counts?,   // personId, season, sportId
+        combinedStints: @Sendable (Int, Int) async throws -> [Stint],       // personId, season
+        stintCounts: @Sendable (Stint) -> Counts?,
+        zero: Counts,
+        add: @Sendable (Counts, Counts) -> Counts,
+        hasActivity: @Sendable (Counts) -> Bool,
+        qualifies: @Sendable (Counts) -> Bool,
+        filters: [Filter],
+        passes: @Sendable (Filter, Counts) -> Bool,
+        filterValue: @Sendable (Filter, Counts) -> FilterValue
+    ) async -> EvaluationOutcome {
         do {
-            if mode == .batters {
-                let counts: BatterCounts?
-                let matchedLevel: String
-                let referenceSportId: Int?
+            let counts: Counts?
+            let matchedLevel: String
+            let referenceSportId: Int?
 
-                if let sid {
-                    counts = try await MLBClient.batterCountsAtLevel(personId: player.personId, season: season, sportId: sid)
-                    matchedLevel = levelAbbrev(sportId: sid)
-                    referenceSportId = sid
-                } else {
-                    let (_, stints) = try await MLBClient.batterLines(personId: player.personId, season: season)
-                    let milbStints = stints.filter { milbSportIds.contains($0.sportId) }
-                    guard !milbStints.isEmpty else { return .notMatched }
-                    let milbCounts = milbStints.compactMap { $0.batter }.reduce(BatterCounts(), +)
-                    counts = milbCounts.pa > 0 ? milbCounts : nil
-                    matchedLevel = "Combined"
-                    // Reference = highest MiLB level with stats
-                    referenceSportId = milbStints
-                        .compactMap { stint in stint.batter.map { _ in stint.sportId } }
-                        .min(by: { levelOrder(sportId: $0) < levelOrder(sportId: $1) })
-                }
-
-                guard let c = counts, c.pa >= filters.minPA else { return .notMatched }
-                guard filters.batterFilters.allSatisfy({ Metrics.passes($0, counts: c) }) else { return .notMatched }
-
-                let filterValues = filters.batterFilters.map { f -> FilterValue in
-                    let v = Metrics.compute(f.metric, from: c) ?? 0
-                    return FilterValue(label: f.metric.rawValue, formatted: Metrics.format(f.metric, v), sortValue: v)
-                }
-                return .matched(MatchResult(
-                    personId: player.personId, fullName: player.fullName,
-                    position: player.position, teamName: player.teamName,
-                    matchedLevel: matchedLevel, referenceSportId: referenceSportId,
-                    age: age, onIL: player.onIL, levelChangeNote: nil, filterValues: filterValues))
-
+            if let sid {
+                counts = try await countsAtLevel(player.personId, season, sid)
+                matchedLevel = levelAbbrev(sportId: sid)
+                referenceSportId = sid
             } else {
-                // Pitchers
-                let counts: PitcherCounts?
-                let matchedLevel: String
-                let referenceSportId: Int?
-
-                if let sid {
-                    counts = try await MLBClient.pitcherCountsAtLevel(personId: player.personId, season: season, sportId: sid)
-                    matchedLevel = levelAbbrev(sportId: sid)
-                    referenceSportId = sid
-                } else {
-                    let (_, stints) = try await MLBClient.pitcherLines(personId: player.personId, season: season)
-                    let milbStints = stints.filter { milbSportIds.contains($0.sportId) }
-                    guard !milbStints.isEmpty else { return .notMatched }
-                    let milbCounts = milbStints.compactMap { $0.pitcher }.reduce(PitcherCounts(), +)
-                    counts = milbCounts.bf > 0 ? milbCounts : nil
-                    matchedLevel = "Combined"
-                    referenceSportId = milbStints
-                        .compactMap { stint in stint.pitcher.map { _ in stint.sportId } }
-                        .min(by: { levelOrder(sportId: $0) < levelOrder(sportId: $1) })
-                }
-
-                guard let c = counts else { return .notMatched }
-                let ip = Metrics.outsToIP(c.outs)
-                guard ip >= filters.minIP else { return .notMatched }
-
-                // SP/RP filter
-                switch pitcherRole {
-                case .sp where !c.isStarter: return .notMatched
-                case .rp where c.isStarter: return .notMatched
-                default: break
-                }
-
-                guard filters.pitcherFilters.allSatisfy({ Metrics.passes($0, counts: c) }) else { return .notMatched }
-
-                let filterValues = filters.pitcherFilters.map { f -> FilterValue in
-                    let v = Metrics.compute(f.metric, from: c) ?? 0
-                    return FilterValue(label: f.metric.rawValue, formatted: Metrics.format(f.metric, v), sortValue: v)
-                }
-                return .matched(MatchResult(
-                    personId: player.personId, fullName: player.fullName,
-                    position: player.position, teamName: player.teamName,
-                    matchedLevel: matchedLevel, referenceSportId: referenceSportId,
-                    age: age, onIL: player.onIL, levelChangeNote: nil, filterValues: filterValues))
+                let stints = try await combinedStints(player.personId, season)
+                let milbStints = stints.filter { milbSportIds.contains($0.sportId) }
+                guard !milbStints.isEmpty else { return .notMatched }
+                let milbCounts = milbStints.compactMap(stintCounts).reduce(zero, add)
+                counts = hasActivity(milbCounts) ? milbCounts : nil
+                matchedLevel = "Combined"
+                // Reference = highest MiLB level with stats
+                referenceSportId = milbStints
+                    .compactMap { stint in stintCounts(stint).map { _ in stint.sportId } }
+                    .min(by: { levelOrder(sportId: $0) < levelOrder(sportId: $1) })
             }
+
+            guard let c = counts, qualifies(c) else { return .notMatched }
+            guard filters.allSatisfy({ passes($0, c) }) else { return .notMatched }
+
+            let filterValues = filters.map { filterValue($0, c) }
+            return .matched(MatchResult(
+                personId: player.personId, fullName: player.fullName,
+                position: player.position, teamName: player.teamName,
+                matchedLevel: matchedLevel, referenceSportId: referenceSportId,
+                age: age, onIL: player.onIL, levelChangeNote: nil, filterValues: filterValues))
         } catch {
             return .failed
         }
