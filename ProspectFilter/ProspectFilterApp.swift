@@ -4,11 +4,14 @@ import SwiftUI
 struct ProspectFilterApp: App {
     @StateObject private var filterStore = FilterStore()
 
+    init() {
+        TipJar.shared.startListening()
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environmentObject(filterStore)
-                .task { await TipJar.shared.listenForTransactions() }
         }
     }
 }

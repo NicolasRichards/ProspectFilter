@@ -25,13 +25,14 @@ The owner runs Claude Code locally on a Mac, in this folder, and opens the proje
 
 - Percentage metrics (K%, BB%, SB%, K-BB%) are stored and entered as percent numbers (25 means 25%); `Metrics.compute` returns them times 100. Rate metrics (AVG, OBP and so on) are raw decimals.
 - Starters versus relievers: a pitcher is a reliever when batters faced per appearance is under 10 (`PitcherCounts.relieverBFPerGame`), matching PDBLScore. BAA is hits / at-bats (not batters faced). Season age is the age on July 1 of the season.
+- The current season (`currentSeasonYear()`, the search season and the detail screen's starting year) is the year in America/New_York, minus one before March 20, because minor league games don't start until the last week of March. The detail year bar can go up to the calendar year (`currentCalendarYear()`). "Now promoted to MLB" notes only show March 20 through September (`isDuringSeason()`): in the offseason a 40-man player's current team is the parent club.
 - "All minor league levels" scans sportIds 11, 12, 13, 14 and 16, dedupes by personId, and judges the combined minor league line.
 - Network fan-out is bounded (`mapConcurrently`, cap 8). Failed player lookups count as failures, not as non-matches, and show a "results may be incomplete" note.
 - Results and per-player loads are guarded by generation tokens, so a superseded search or season switch can't overwrite newer results. Keep that pattern for any new async load.
 - IL and promotion flags are resolved after filtering, only for matched players. A failure there falls back to unflagged results rather than discarding the search.
 - Results rows deliberately do not show team names. Real affiliate names in an App Store screenshot caused a Guideline 4.1(a) rejection.
 - App Store listing: never use the literal "MLB" or "MiLB" in the name, subtitle, description or keywords. Spell out "minor league" or "major league". In-app text and code are fine.
-- Tip jar: consumable tips `com.nicolasrichards.ProspectFilter.tip.{small,medium,large}`; the transaction listener runs from the root view in the `App` body.
+- Tip jar: consumable tips `com.nicolasrichards.ProspectFilter.tip.{small,medium,large}`; the `Transaction.updates` listener is a Task owned by `TipJar.shared`, started once from the `App` init (`startListening()`, idempotent).
 - Version bumps are their own commits, titled like `Bump to 1.6 (10)`. The owner archives and uploads from Xcode.
 - The repo is public on purpose (GitHub Pages), so never commit secrets.
 

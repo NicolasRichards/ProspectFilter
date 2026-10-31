@@ -77,7 +77,7 @@ struct PlayerDetailView: View {
     @StateObject private var vm = PlayerDetailViewModel()
 
     private let minYear = 2005
-    private var maxYear: Int { currentSeasonYear() }
+    private var maxYear: Int { currentCalendarYear() }
 
     init(personId: Int, fullName: String, isPitcher: Bool, season: Int) {
         self.personId = personId

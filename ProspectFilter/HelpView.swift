@@ -31,7 +31,7 @@ struct HelpView: View {
                     HelpItem(icon: "arrow.clockwise",  title: "Auto-refresh",
                              detail: "After your first search, results update automatically whenever you change any filter or cohort setting.")
                     HelpItem(icon: "list.bullet",      title: "Results",
-                             detail: "Each row shows position, age, level, team, and filter values. An IL badge marks injured players. A blue note flags a level change since their stats were compiled.")
+                             detail: "Each row shows position, level (Combined when searching all levels), and filter values, plus age when Max Age is set. An IL badge marks injured players. A blue note, such as \"now promoted to AAA\", means the player's current team is at a different level than the stats they matched on.")
                     HelpItem(icon: "person.crop.rectangle", title: "Player detail",
                              detail: "Tap any row to see their full stat line by level for the current season.")
                 }

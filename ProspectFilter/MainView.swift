@@ -35,6 +35,8 @@ private func mapConcurrently<Item: Sendable, Result: Sendable>(
 @MainActor
 final class MainViewModel: ObservableObject {
     @Published var orgs: [Org] = []
+    @Published private(set) var orgsLoadFailed = false
+    private var loadingOrgs = false
     @Published var orgId: Int? = nil
     @Published var sportId: Int? = nil          // nil = all MiLB levels
     @Published var maxAge: Int? = nil
@@ -51,8 +53,13 @@ final class MainViewModel: ObservableObject {
     /// against this rather than the live picker, so flipping Batters/Pitchers
     /// can't reinterpret a batter list as pitchers before new results land.
     @Published private(set) var resultsMode: PlayerMode?
+    /// The season the on-screen results were built from, so a search made just
+    /// before the season rolls over still opens player details on that season.
+    @Published private(set) var resultsSeason: Int?
 
-    var lastSearchedFilters: FilterSet?
+    /// Set by the first Find tap, not when a search finishes, so a change made
+    /// while that first search is still running re-runs it with the new settings.
+    private var searchRequested = false
     private var debounceTask: Task<Void, Never>?
     private var searchTask: Task<Void, Never>?
 
@@ -62,7 +69,7 @@ final class MainViewModel: ObservableObject {
     private var generation = TaskGeneration()
 
     /// Computed, not stored — a long-lived instance (the app is rarely force-quit)
-    /// must still pick up a new season on January 1 instead of freezing at
+    /// must still pick up a new season in April instead of freezing at
     /// whatever year it happened to be constructed in.
     var season: Int { currentSeasonYear() }
 
@@ -80,6 +87,8 @@ final class MainViewModel: ObservableObject {
         // completes, re-running a stale duplicate search the user never asked for.
         debounceTask?.cancel()
         searchTask?.cancel()
+        searchRequested = true
+        if orgs.isEmpty { Task { await loadOrgs() } }
         // Bump here, not inside `search`: the cancelled search is superseded the
         // moment this returns, so it can't publish in the gap before the new
         // search's first resume.
@@ -93,7 +102,7 @@ final class MainViewModel: ObservableObject {
         // Auto-search only after the user has run one search explicitly. A
         // search already running is NOT a reason to skip: it gets cancelled and
         // replaced below, otherwise a change made mid-search is dropped for good.
-        guard lastSearchedFilters != nil else { return }
+        guard searchRequested else { return }
         debounceTask?.cancel()
         debounceTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(700))
@@ -103,14 +112,23 @@ final class MainViewModel: ObservableObject {
     }
 
     func loadOrgs() async {
-        if orgs.isEmpty { orgs = (try? await MLBClient.orgs(season: season)) ?? [] }
+        guard orgs.isEmpty, !loadingOrgs else { return }
+        loadingOrgs = true; orgsLoadFailed = false
+        defer { loadingOrgs = false }
+        do {
+            let loaded = try await MLBClient.orgs(season: season)
+            orgs = loaded
+            orgsLoadFailed = loaded.isEmpty
+        } catch {
+            if !Self.isCancellation(error) { orgsLoadFailed = true }
+        }
     }
 
     // MARK: - Search
 
     private func search(filters: FilterSet, mode: PlayerMode, token mine: Int) async {
         guard generation.isCurrent(mine) else { return }
-        searching = true; errorMessage = nil; results = nil; resultsMode = nil; resultsIncomplete = false
+        searching = true; errorMessage = nil; results = nil; resultsMode = nil; resultsSeason = nil; resultsIncomplete = false
         // Only the current search may hand the UI back: a superseded one leaves
         // the spinner to the search that replaced it.
         defer { if generation.isCurrent(mine) { searching = false } }
@@ -119,7 +137,7 @@ final class MainViewModel: ObservableObject {
 
         do {
             // 1. Collect candidate roster players
-            let (roster, rosterIncomplete) = try await buildRoster(orgId: org, sportId: sid, season: ssn)
+            let (roster, rosterIncomplete, rosterIL) = try await buildRoster(orgId: org, sportId: sid, season: ssn)
 
             // 2. Mode filter. `isBatter`/`isPitcher` aren't opposites — a
             // two-way player is both, and should turn up in either search.
@@ -129,8 +147,7 @@ final class MainViewModel: ObservableObject {
 
             // 3. Position filter
             let posFiltered = modeFiltered.filter { p in
-                positionMatches(player: p, mode: mode, batterPos: bPos, pitcherRole: pRole,
-                                filters: filters, sportId: sid)
+                positionMatches(player: p, mode: mode, batterPos: bPos)
             }
 
             // 4. Age filter — one API call; map reused for display
@@ -171,7 +188,7 @@ final class MainViewModel: ObservableObject {
             // 6. Resolve status flags on matched set only. A failure here (e.g. a
             // timeout on the extra IL/promotion lookup) must not discard results
             // that steps 1-5 already found and filtered correctly.
-            let withFlags = (try? await resolveStatusFlags(matched: matched, season: ssn)) ?? matched
+            let withFlags = (try? await resolveStatusFlags(matched: matched, season: ssn, knownIL: rosterIL)) ?? matched
             // ≥ metrics (OBP, SB...) are better higher, so sort descending. ≤
             // metrics (ERA, K%...) are better lower — sorting descending for
             // those would put the worst still-qualifying value first.
@@ -189,6 +206,7 @@ final class MainViewModel: ObservableObject {
             guard generation.isCurrent(mine) else { return }   // superseded
             results = sorted
             resultsMode = mode
+            resultsSeason = ssn
             resultsIncomplete = incomplete
 
         } catch {
@@ -197,9 +215,8 @@ final class MainViewModel: ObservableObject {
             errorMessage = MLBClient.friendlyMessage(for: error)
             results = []
             resultsMode = mode
+            resultsSeason = ssn
         }
-        guard generation.isCurrent(mine) else { return }
-        lastSearchedFilters = filters
     }
 
     private static func isCancellation(_ error: Error) -> Bool {
@@ -212,7 +229,9 @@ final class MainViewModel: ObservableObject {
     /// failed. Reported back to the caller rather than published directly —
     /// this runs inside a search that might already be superseded by the
     /// time it finishes, and only the caller knows whether it still is.
-    private func buildRoster(orgId: Int?, sportId: Int?, season: Int) async throws -> (roster: [RosterPlayer], incomplete: Bool) {
+    /// `ilByTeam` (teamId → personId → onIL) lets status flags skip re-fetching these rosters.
+    private func buildRoster(orgId: Int?, sportId: Int?, season: Int) async throws
+        -> (roster: [RosterPlayer], incomplete: Bool, ilByTeam: [Int: [Int: Bool]]) {
         var incomplete = false
         let teamList: [AffiliateTeam]
         if let orgId {
@@ -246,16 +265,18 @@ final class MainViewModel: ObservableObject {
 
         var seen = Set<Int>()
         var roster: [RosterPlayer] = []
+        var ilByTeam: [Int: [Int: Bool]] = [:]
         let rosterLists: [[RosterPlayer]?] = await mapConcurrently(teamList, limit: Self.maxConcurrentRequests) { team in
             try? await MLBClient.rosterPlayers(team: team, season: season)
         }
-        for maybePlayers in rosterLists {
+        for (team, maybePlayers) in zip(teamList, rosterLists) {
             guard let players = maybePlayers else { incomplete = true; continue }
+            ilByTeam[team.id] = Dictionary(players.map { ($0.personId, $0.onIL) }, uniquingKeysWith: { $0 || $1 })
             for p in players where seen.insert(p.personId).inserted {
                 roster.append(p)
             }
         }
-        return (roster, incomplete)
+        return (roster, incomplete, ilByTeam)
     }
 
     // MARK: - Per-player evaluation
@@ -284,7 +305,7 @@ final class MainViewModel: ObservableObject {
                     try await MLBClient.batterCountsAtLevel(personId: personId, season: season, sportId: sid)
                 },
                 combinedStints: { personId, season in
-                    try await MLBClient.batterLines(personId: personId, season: season).1
+                    try await MLBClient.batterLines(personId: personId, season: season, sportIds: milbSportIds).1
                 },
                 stintCounts: { $0.batter },
                 zero: BatterCounts(),
@@ -304,7 +325,7 @@ final class MainViewModel: ObservableObject {
                     try await MLBClient.pitcherCountsAtLevel(personId: personId, season: season, sportId: sid)
                 },
                 combinedStints: { personId, season in
-                    try await MLBClient.pitcherLines(personId: personId, season: season).1
+                    try await MLBClient.pitcherLines(personId: personId, season: season, sportIds: milbSportIds).1
                 },
                 stintCounts: { $0.pitcher },
                 zero: PitcherCounts(),
@@ -385,8 +406,7 @@ final class MainViewModel: ObservableObject {
 
     // MARK: - Position matching
 
-    private func positionMatches(player: RosterPlayer, mode: PlayerMode, batterPos: BatterPosition,
-                                 pitcherRole: PitcherRole, filters: FilterSet, sportId: Int?) -> Bool {
+    private func positionMatches(player: RosterPlayer, mode: PlayerMode, batterPos: BatterPosition) -> Bool {
         if mode == .batters {
             if batterPos == .any { return true }
             if batterPos == .of { return ["LF", "CF", "RF", "OF"].contains(player.position) }
@@ -398,26 +418,29 @@ final class MainViewModel: ObservableObject {
 
     // MARK: - Status flags
 
-    private func resolveStatusFlags(matched: [MatchResult], season: Int) async throws -> [MatchResult] {
+    private func resolveStatusFlags(matched: [MatchResult], season: Int,
+                                    knownIL: [Int: [Int: Bool]]) async throws -> [MatchResult] {
         guard !matched.isEmpty else { return [] }
 
-        // Batch-resolve current team for all matched players
-        let currentTeams = try await MLBClient.currentTeamInfo(personIds: matched.map(\.personId))
+        // Batch-resolve current team for all matched players, and every
+        // team's level once per search (a failure there only drops level notes).
+        async let sportsLookup = try? MLBClient.teamSportIds()
+        let currentTeams = try await MLBClient.currentTeamIds(personIds: matched.map(\.personId))
+        let teamSports = await sportsLookup ?? [:]
 
-        // Fetch IL status for each unique current team
-        let uniqueTeamIds = Set(currentTeams.values.compactMap(\.teamId))
-        var ilMaps: [Int: [Int: Bool]] = [:]
+        // IL status per unique current team, reusing rosters this search already fetched
+        let uniqueTeamIds = Set(currentTeams.values)
+        var ilMaps = knownIL.filter { uniqueTeamIds.contains($0.key) }
         try await withThrowingTaskGroup(of: (Int, [Int: Bool]).self) { group in
-            for tid in uniqueTeamIds {
+            for tid in uniqueTeamIds where ilMaps[tid] == nil {
                 group.addTask { (tid, (try? await MLBClient.teamILStatus(teamId: tid, season: season)) ?? [:]) }
             }
             for try await (tid, map) in group { ilMaps[tid] = map }
         }
 
         return matched.map { r in
-            let info = currentTeams[r.personId]
-            let currentSportId = info?.sportId
-            let currentTeamId = info?.teamId
+            let currentTeamId = currentTeams[r.personId]
+            let currentSportId = currentTeamId.flatMap { teamSports[$0] }
 
             let onIL: Bool
             if let tid = currentTeamId, let ilMap = ilMaps[tid] {
@@ -427,7 +450,9 @@ final class MainViewModel: ObservableObject {
             }
 
             var levelNote: String? = nil
-            if let currentSid = currentSportId, let refSid = r.referenceSportId, currentSid != refSid {
+            if let currentSid = currentSportId, let refSid = r.referenceSportId, currentSid != refSid,
+               allSportIds.contains(currentSid), allSportIds.contains(refSid),
+               currentSid != 1 || isDuringSeason() {
                 let currentOrder = levelOrder(sportId: currentSid)
                 let refOrder = levelOrder(sportId: refSid)
                 let currentLabel = levelAbbrev(sportId: currentSid)
@@ -456,9 +481,7 @@ struct MainView: View {
 
     private var mode: PlayerMode { PlayerMode(rawValue: modeRaw) ?? .batters }
 
-    private let levels: [(String, Int)] = [
-        ("AAA", 11), ("AA", 12), ("A+", 13), ("A", 14), ("Rk-C", 16),
-    ]
+    private let levels: [(String, Int)] = milbSportIds.map { (levelAbbrev(sportId: $0), $0) }
 
     var body: some View {
         Form {
@@ -489,6 +512,16 @@ struct MainView: View {
                     Picker("Organization", selection: $vm.orgId) {
                         Text("All organizations").tag(Int?.none)
                         ForEach(vm.orgs) { Text($0.name).tag(Int?.some($0.id)) }
+                    }
+                    if vm.orgsLoadFailed && vm.orgs.isEmpty {
+                        HStack {
+                            Text("Couldn't load organizations.")
+                                .font(.footnote)
+                                .foregroundStyle(.red)
+                            Spacer()
+                            Button("Retry") { Task { await vm.loadOrgs() } }
+                                .font(.footnote)
+                        }
                     }
 
                     Picker("Level", selection: $vm.sportId) {
@@ -526,7 +559,7 @@ struct MainView: View {
                                 // live picker — see MainViewModel.resultsMode.
                                 PlayerDetailView(personId: r.personId, fullName: r.fullName,
                                                  isPitcher: (vm.resultsMode ?? mode) == .pitchers,
-                                                 season: vm.season)
+                                                 season: vm.resultsSeason ?? vm.season)
                             } label: {
                                 resultRow(r)
                             }

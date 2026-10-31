@@ -19,15 +19,38 @@ struct TaskGeneration {
     func isCurrent(_ token: Int) -> Bool { token == value }
 }
 
-/// The current calendar year via an explicit Gregorian/UTC calendar, so a
-/// device set to a non-Gregorian Region/Calendar (Buddhist, Japanese,
-/// Hebrew, ...) can't turn "this season" into a nonsensical year — every
-/// season/date computation in this app is against the MLB's Gregorian
-/// calendar, not whatever the device happens to display.
-func currentSeasonYear() -> Int {
+/// Gregorian, America/New_York: the MLB calendar, and immune to a device set to
+/// a non-Gregorian Region/Calendar (Buddhist, Japanese, Hebrew, ...).
+private func easternDateParts() -> (year: Int, month: Int, day: Int) {
     var calendar = Calendar(identifier: .gregorian)
-    calendar.timeZone = TimeZone(identifier: "UTC") ?? .current
-    return calendar.component(.year, from: Date())
+    calendar.timeZone = TimeZone(identifier: "America/New_York") ?? .current
+    let parts = calendar.dateComponents([.year, .month, .day], from: Date())
+    return (parts.year ?? 0, parts.month ?? 1, parts.day ?? 1)
+}
+
+/// Before March 20 the new year has no minor league games yet (AAA opens in
+/// the last week of March), so searching it would find nobody.
+private func isBeforeSeasonStart(_ p: (year: Int, month: Int, day: Int)) -> Bool {
+    p.month < 3 || (p.month == 3 && p.day < 20)
+}
+
+/// The most recent minor league season: the year in New York, minus one
+/// before March 20.
+func currentSeasonYear() -> Int {
+    let p = easternDateParts()
+    return isBeforeSeasonStart(p) ? p.year - 1 : p.year
+}
+
+/// The calendar year in New York — the newest season that can have any stats.
+func currentCalendarYear() -> Int {
+    easternDateParts().year
+}
+
+/// March 20 through September in New York. Outside it, a 40-man player's
+/// current team is usually the MLB parent club even though he was never called up.
+func isDuringSeason() -> Bool {
+    let p = easternDateParts()
+    return !isBeforeSeasonStart(p) && p.month <= 9
 }
 
 enum PlayerMode: String, CaseIterable, Identifiable {
@@ -271,7 +294,7 @@ struct MatchResult: Identifiable {
     let referenceSportId: Int?  // for status flag computation
     let age: Int?
     let onIL: Bool
-    let levelChangeNote: String? // "now at AAA" / "now demoted to A" etc.
+    let levelChangeNote: String? // "now promoted to AAA" / "now demoted to A"
     let filterValues: [FilterValue]  // metric values for the active filters, in filter order
 }
 
@@ -296,8 +319,4 @@ let allSportIds  = [1, 11, 12, 13, 14, 16]
 /// Order index — lower == higher level (MLB == 0).
 func levelOrder(sportId: Int) -> Int {
     allSportIds.firstIndex(of: sportId) ?? Int.max
-}
-
-func teamLabel(team: String, level: String) -> String {
-    level.isEmpty ? team : "\(team) (\(level))"
 }

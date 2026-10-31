@@ -1,8 +1,5 @@
 import SwiftUI
 
-private let defaultMinPA = 50.0
-private let defaultMinIP = 20.0
-
 private let paPickerValues: [Double] = stride(from: 0, through: 300, by: 5).map(Double.init)
 private let ipPickerValues: [Double] = stride(from: 0, through: 100, by: 5).map(Double.init)
 
@@ -45,8 +42,8 @@ struct FiltersView: View {
             HStack {
                 Text("Minimum PA")
                 Spacer()
-                if filterStore.filters.minPA != defaultMinPA {
-                    Button("Reset") { filterStore.filters.minPA = defaultMinPA }
+                if filterStore.filters.minPA != FilterSet().minPA {
+                    Button("Reset") { filterStore.filters.minPA = FilterSet().minPA }
                         .font(.caption)
                 }
                 Button {
@@ -102,8 +99,8 @@ struct FiltersView: View {
             HStack {
                 Text("Minimum IP")
                 Spacer()
-                if filterStore.filters.minIP != defaultMinIP {
-                    Button("Reset") { filterStore.filters.minIP = defaultMinIP }
+                if filterStore.filters.minIP != FilterSet().minIP {
+                    Button("Reset") { filterStore.filters.minIP = FilterSet().minIP }
                         .font(.caption)
                 }
                 Button {

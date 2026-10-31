@@ -199,13 +199,10 @@ enum MLBClient {
 
     // MARK: - Current team info (for status flags)
 
-    struct CurrentTeamInfo {
-        let teamId: Int?
-        let sportId: Int?
-    }
-
-    static func currentTeamInfo(personIds: [Int]) async throws -> [Int: CurrentTeamInfo] {
-        var out: [Int: CurrentTeamInfo] = [:]
+    /// personId → current team id. The currentTeam hydrate carries no sport,
+    /// so the team's level comes from `teamSportIds` instead.
+    static func currentTeamIds(personIds: [Int]) async throws -> [Int: Int] {
+        var out: [Int: Int] = [:]
         for start in stride(from: 0, to: personIds.count, by: 100) {
             let chunk = Array(personIds[start..<min(start + 100, personIds.count)])
             let resp: PersonCurrentTeamResponse = try await get(
@@ -213,18 +210,36 @@ enum MLBClient {
                 ["personIds": chunk.map(String.init).joined(separator: ","),
                  "hydrate": "currentTeam"])
             for p in resp.people {
-                out[p.id] = CurrentTeamInfo(teamId: p.currentTeam?.id, sportId: p.currentTeam?.sport?.id)
+                if let tid = p.currentTeam?.id { out[p.id] = tid }
             }
         }
         return out
     }
 
+    /// teamId → sportId for every MLB and minor league team this season. No
+    /// `season` parameter: it's matched against a player's team right now.
+    /// Cached for the session once it loads (~160 KB, and a team's level doesn't change mid-session).
+    @MainActor static func teamSportIds() async throws -> [Int: Int] {
+        if let cached = teamSportCache { return cached }
+        let resp: TeamsResponse = try await get(
+            "teams", ["sportIds": allSportIds.map(String.init).joined(separator: ",")])
+        var out: [Int: Int] = [:]
+        for t in resp.teams {
+            if let sid = t.sport?.id { out[t.id] = sid }
+        }
+        if !out.isEmpty { teamSportCache = out }
+        return out
+    }
+    @MainActor private static var teamSportCache: [Int: Int]?
+
     // MARK: - Season stats
 
-    static func batterLines(personId: Int, season: Int) async throws -> (BatterCounts, [Stint]) {
+    /// `sportIds` defaults to every level including MLB (the detail screen);
+    /// search passes only the minor league levels it actually judges.
+    static func batterLines(personId: Int, season: Int, sportIds: [Int] = allSportIds) async throws -> (BatterCounts, [Stint]) {
         var bySport: [Int: [HitSplit]] = [:]
         try await withThrowingTaskGroup(of: (Int, [HitSplit]).self) { group in
-            for sid in allSportIds {
+            for sid in sportIds {
                 group.addTask {
                     // A level the player never played at returns 200 with empty
                     // stats, so a throw here is a real failure: propagate it
@@ -239,7 +254,7 @@ enum MLBClient {
         }
         var agg = BatterCounts()
         var stints: [Stint] = []
-        for sid in allSportIds {
+        for sid in sportIds {
             for split in (bySport[sid] ?? []) where split.team != nil {
                 let c = split.stat.counts
                 agg = agg + c
@@ -251,10 +266,12 @@ enum MLBClient {
         return (agg, stints)
     }
 
-    static func pitcherLines(personId: Int, season: Int) async throws -> (PitcherCounts, [Stint]) {
+    /// `sportIds` defaults to every level including MLB (the detail screen);
+    /// search passes only the minor league levels it actually judges.
+    static func pitcherLines(personId: Int, season: Int, sportIds: [Int] = allSportIds) async throws -> (PitcherCounts, [Stint]) {
         var bySport: [Int: [PitchSplit]] = [:]
         try await withThrowingTaskGroup(of: (Int, [PitchSplit]).self) { group in
-            for sid in allSportIds {
+            for sid in sportIds {
                 group.addTask {
                     // A level the player never played at returns 200 with empty
                     // stats, so a throw here is a real failure: propagate it
@@ -269,7 +286,7 @@ enum MLBClient {
         }
         var agg = PitcherCounts()
         var stints: [Stint] = []
-        for sid in allSportIds {
+        for sid in sportIds {
             for split in (bySport[sid] ?? []) where split.team != nil {
                 let c = split.stat.counts
                 agg = agg + c
@@ -327,7 +344,7 @@ private struct PersonCurrentTeam: Decodable {
     let id: Int
     let currentTeam: TeamRef?
 }
-private struct TeamRef: Decodable { let id: Int; let sport: NamedRef? }
+private struct TeamRef: Decodable { let id: Int }
 
 private struct HitStatsResponse: Decodable { let stats: [HitStatGroup] }
 private struct HitStatGroup: Decodable { let splits: [HitSplit] }
