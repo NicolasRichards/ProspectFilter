@@ -24,7 +24,7 @@ The owner runs Claude Code locally on a Mac, in this folder, and opens the proje
 ## Conventions and gotchas
 
 - Percentage metrics (K%, BB%, SB%, K-BB%) are stored and entered as percent numbers (25 means 25%); `Metrics.compute` returns them times 100. Rate metrics (AVG, OBP and so on) are raw decimals.
-- Starters versus relievers: `gamesStarted / gamesPlayed >= 0.5` means starter (constant in `PitcherCounts`). Season age is the age on July 1 of the season.
+- Starters versus relievers: a pitcher is a reliever when batters faced per appearance is under 10 (`PitcherCounts.relieverBFPerGame`), matching PDBLScore. BAA is hits / at-bats (not batters faced). Season age is the age on July 1 of the season.
 - "All minor league levels" scans sportIds 11, 12, 13, 14 and 16, dedupes by personId, and judges the combined minor league line.
 - Network fan-out is bounded (`mapConcurrently`, cap 8). Failed player lookups count as failures, not as non-matches, and show a "results may be incomplete" note.
 - Results and per-player loads are guarded by generation tokens, so a superseded search or season switch can't overwrite newer results. Keep that pattern for any new async load.

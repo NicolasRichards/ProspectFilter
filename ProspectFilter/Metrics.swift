@@ -63,7 +63,7 @@ enum Metrics {
         case .whip:
             return ip > 0 ? (c.bb + c.h) / ip : nil
         case .baa:
-            return c.bf > 0 ? c.h / c.bf : nil
+            return c.ab > 0 ? c.h / c.ab : nil
         case .kPct:
             return c.bf > 0 ? (c.so / c.bf) * 100 : nil
         case .bbPct:

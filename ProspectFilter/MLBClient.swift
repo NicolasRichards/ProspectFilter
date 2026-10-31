@@ -223,19 +223,19 @@ enum MLBClient {
 
     static func batterLines(personId: Int, season: Int) async throws -> (BatterCounts, [Stint]) {
         var bySport: [Int: [HitSplit]] = [:]
-        // Each level's fetch is independent, so a transient failure at one
-        // level (e.g. a level this player never played at) must not discard
-        // the other levels' already-fetched, successful data.
-        await withTaskGroup(of: (Int, [HitSplit]).self) { group in
+        try await withThrowingTaskGroup(of: (Int, [HitSplit]).self) { group in
             for sid in allSportIds {
                 group.addTask {
-                    let resp: HitStatsResponse? = try? await get(
+                    // A level the player never played at returns 200 with empty
+                    // stats, so a throw here is a real failure: propagate it
+                    // rather than judging the player on the levels that loaded.
+                    let resp: HitStatsResponse = try await get(
                         "people/\(personId)/stats",
                         ["stats": "season", "group": "hitting", "season": "\(season)", "sportId": "\(sid)"])
-                    return (sid, resp?.stats.flatMap { $0.splits } ?? [])
+                    return (sid, resp.stats.flatMap { $0.splits })
                 }
             }
-            for await (sid, splits) in group { bySport[sid] = splits }
+            for try await (sid, splits) in group { bySport[sid] = splits }
         }
         var agg = BatterCounts()
         var stints: [Stint] = []
@@ -253,18 +253,19 @@ enum MLBClient {
 
     static func pitcherLines(personId: Int, season: Int) async throws -> (PitcherCounts, [Stint]) {
         var bySport: [Int: [PitchSplit]] = [:]
-        // Same reasoning as batterLines: don't let one level's failure
-        // discard every other level's already-fetched data.
-        await withTaskGroup(of: (Int, [PitchSplit]).self) { group in
+        try await withThrowingTaskGroup(of: (Int, [PitchSplit]).self) { group in
             for sid in allSportIds {
                 group.addTask {
-                    let resp: PitchStatsResponse? = try? await get(
+                    // A level the player never played at returns 200 with empty
+                    // stats, so a throw here is a real failure: propagate it
+                    // rather than judging the player on the levels that loaded.
+                    let resp: PitchStatsResponse = try await get(
                         "people/\(personId)/stats",
                         ["stats": "season", "group": "pitching", "season": "\(season)", "sportId": "\(sid)"])
-                    return (sid, resp?.stats.flatMap { $0.splits } ?? [])
+                    return (sid, resp.stats.flatMap { $0.splits })
                 }
             }
-            for await (sid, splits) in group { bySport[sid] = splits }
+            for try await (sid, splits) in group { bySport[sid] = splits }
         }
         var agg = PitcherCounts()
         var stints: [Stint] = []
@@ -364,6 +365,7 @@ private struct PitchStat: Decodable {
     let hits: Int?
     let homeRuns: Int?
     let battersFaced: Int?
+    let atBats: Int?
     let holds: Int?
     let saves: Int?
     let gamesPitched: Int?
@@ -376,7 +378,7 @@ private struct PitchStat: Decodable {
         return PitcherCounts(
             so: Double(strikeOuts ?? 0), bb: Double(baseOnBalls ?? 0),
             h: Double(hits ?? 0), hr: Double(homeRuns ?? 0),
-            bf: Double(battersFaced ?? 0), outs: Metrics.ipToOuts(ip),
+            bf: Double(battersFaced ?? 0), ab: Double(atBats ?? 0), outs: Metrics.ipToOuts(ip),
             holds: Double(holds ?? 0), saves: Double(saves ?? 0),
             games: Double(gamesPitched ?? 0), gamesStarted: Double(gamesStarted ?? 0),
             earnedRuns: Double(earnedRuns ?? 0))

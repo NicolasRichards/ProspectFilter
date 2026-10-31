@@ -83,12 +83,12 @@ struct BatterCounts {
 
 /// Pitching counts. Innings stored as outs so they sum correctly.
 struct PitcherCounts {
-    var so = 0.0, bb = 0.0, h = 0.0, hr = 0.0, bf = 0.0, outs = 0.0
+    var so = 0.0, bb = 0.0, h = 0.0, hr = 0.0, bf = 0.0, ab = 0.0, outs = 0.0
     var holds = 0.0, saves = 0.0, games = 0.0, gamesStarted = 0.0, earnedRuns = 0.0
 
     static func + (lhs: PitcherCounts, rhs: PitcherCounts) -> PitcherCounts {
         PitcherCounts(so: lhs.so + rhs.so, bb: lhs.bb + rhs.bb, h: lhs.h + rhs.h,
-                      hr: lhs.hr + rhs.hr, bf: lhs.bf + rhs.bf, outs: lhs.outs + rhs.outs,
+                      hr: lhs.hr + rhs.hr, bf: lhs.bf + rhs.bf, ab: lhs.ab + rhs.ab, outs: lhs.outs + rhs.outs,
                       holds: lhs.holds + rhs.holds, saves: lhs.saves + rhs.saves,
                       games: lhs.games + rhs.games, gamesStarted: lhs.gamesStarted + rhs.gamesStarted,
                       earnedRuns: lhs.earnedRuns + rhs.earnedRuns)
